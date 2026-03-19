@@ -10,7 +10,7 @@ import {
   useNodesState,
 } from "@xyflow/react"
 import { Focus, Maximize2, Minimize2, Network } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,6 +30,29 @@ const nodeTypes = {
   sub: CustomNode,
 }
 
+function normalizeMindMapText(text: string) {
+  return text
+    .replace(/\b(là gì|la gi)\b/gi, "")
+    .replace(/\b(hoạt động như thế nào|hoat dong nhu the nao)\b/gi, "")
+    .replace(/\b(vận hành ra sao|van hanh ra sao)\b/gi, "")
+    .replace(/\b(vận hành như thế nào|van hanh nhu the nao)\b/gi, "")
+    .replace(/\b(ra sao)\b/gi, "")
+    .replace(/\b(như thế nào|nhu the nao)\b/gi, "")
+    .replace(/\b(thế nào|the nao)\b/gi, "")
+    .replace(/[?]+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+}
+
+function getInitialSelectedNode(nodes: MindMapNode[]) {
+  return (
+    nodes.find((node) => node.type === "main") ??
+    nodes.find((node) => node.type === "root") ??
+    nodes[0] ??
+    null
+  )
+}
+
 export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<MindMapNode>(
     initialData?.nodes ?? []
@@ -44,6 +67,17 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
     useState<ReactFlowInstance<MindMapNode, MindMapEdge> | null>(null)
   const [loading, setLoading] = useState(!(initialData?.nodes?.length))
   const [error, setError] = useState<string | null>(null)
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)")
+    const syncLayoutMode = () => setIsDesktopLayout(mediaQuery.matches)
+
+    syncLayoutMode()
+    mediaQuery.addEventListener("change", syncLayoutMode)
+
+    return () => mediaQuery.removeEventListener("change", syncLayoutMode)
+  }, [])
 
   useEffect(() => {
     if (!initialData?.nodes?.length) {
@@ -51,8 +85,7 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
     }
 
     setGraphData(initialData)
-    setSelectedNode(initialData.nodes.find((node) => node.type === "root") ?? initialData.nodes[0] ?? null)
-    setExpandedNodeIds([])
+    setSelectedNode(getInitialSelectedNode(initialData.nodes))
     setLoading(false)
     setError(null)
   }, [initialData])
@@ -78,12 +111,7 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
 
         if (mindmapData?.nodes?.length) {
           setGraphData(mindmapData)
-          setSelectedNode(
-            mindmapData.nodes.find((node) => node.type === "root") ??
-              mindmapData.nodes[0] ??
-              null
-          )
-          setExpandedNodeIds([])
+          setSelectedNode(getInitialSelectedNode(mindmapData.nodes))
           return
         }
 
@@ -106,6 +134,19 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
       isMounted = false
     }
   }, [initialData, sessionId])
+
+  const expandableNodeIds = useMemo(
+    () => (graphData ? getExpandableNodeIds(graphData) : []),
+    [graphData]
+  )
+
+  useEffect(() => {
+    if (!graphData) {
+      return
+    }
+
+    setExpandedNodeIds(isDesktopLayout ? expandableNodeIds : [])
+  }, [expandableNodeIds, graphData, isDesktopLayout])
 
   useEffect(() => {
     if (!graphData) {
@@ -140,8 +181,11 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
   )
 
   const hasExpandableChildren = Boolean(
-    selectedNode && graphData?.edges.some((edge) => edge.source === selectedNode.id)
+    selectedNode && expandableNodeIds.includes(selectedNode.id)
   )
+  const allExpanded =
+    expandableNodeIds.length > 0 &&
+    expandableNodeIds.every((nodeId) => expandedNodeIds.includes(nodeId))
 
   if (loading) {
     return (
@@ -175,8 +219,9 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
                   Chi tiết node
                 </div>
                 <h4 className="font-display text-xl font-semibold text-balance">
-                  {(selectedNode.data.full_label as string) ||
-                    selectedNode.data.label}
+                  {normalizeMindMapText(
+                    ((selectedNode.data.full_label as string) || selectedNode.data.label) as string
+                  )}
                 </h4>
                 {selectedNode.data.description ? (
                   <p className="text-sm leading-6 text-foreground/80">
@@ -191,6 +236,28 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                {expandableNodeIds.length ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setExpandedNodeIds(allExpanded ? [] : expandableNodeIds)
+                    }
+                  >
+                    {allExpanded ? (
+                      <>
+                        <Minimize2 className="mr-2 size-4" />
+                        Thu gọn tất cả
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="mr-2 size-4" />
+                        Mở toàn bộ nhánh
+                      </>
+                    )}
+                  </Button>
+                ) : null}
+
                 {hasExpandableChildren ? (
                   <Button
                     type="button"
@@ -223,8 +290,9 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Nhấn vào từng nhánh trong sơ đồ để xem đầy đủ nội dung. Với nhánh
-              chính, bạn có thể mở rộng để hiện thêm các nhánh con nếu dữ liệu có sẵn.
+              {isDesktopLayout
+                ? "Desktop đang mở sẵn toàn bộ nhánh con để bạn nhìn toàn cảnh. Bạn vẫn có thể thu gọn từng nhánh hoặc toàn bộ sơ đồ nếu muốn."
+                : "Trên mobile, mind map mặc định ở chế độ gọn để đỡ rối. Chạm vào nhánh hoặc dùng nút mở rộng để xem thêm chi tiết."}
             </p>
           </CardContent>
         </Card>
@@ -238,7 +306,8 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
           onEdgesChange={onEdgesChange}
           onNodeClick={(_, node) => {
             setSelectedNode(node)
-            if (graphData?.edges.some((edge) => edge.source === node.id)) {
+            const canToggleBranch = expandableNodeIds.includes(node.id)
+            if (!isDesktopLayout && canToggleBranch) {
               toggleNodeExpansion(node.id, setExpandedNodeIds)
             }
           }}
@@ -260,7 +329,7 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
 
 function toggleNodeExpansion(
   nodeId: string,
-  setExpandedNodeIds: React.Dispatch<React.SetStateAction<string[]>>
+  setExpandedNodeIds: Dispatch<SetStateAction<string[]>>
 ) {
   setExpandedNodeIds((current) => {
     if (current.includes(nodeId)) {
@@ -268,6 +337,20 @@ function toggleNodeExpansion(
     }
     return [...current, nodeId]
   })
+}
+
+function getExpandableNodeIds(graphData: MindMapData) {
+  const nodeMap = new Map(graphData.nodes.map((node) => [node.id, node]))
+  const expandable = new Set<string>()
+
+  graphData.edges.forEach((edge) => {
+    const targetNode = nodeMap.get(edge.target)
+    if (targetNode?.type === "sub") {
+      expandable.add(edge.source)
+    }
+  })
+
+  return Array.from(expandable)
 }
 
 function buildVisibleGraph(graphData: MindMapData, expandedNodeIds: string[]) {
@@ -301,8 +384,7 @@ function buildVisibleGraph(graphData: MindMapData, expandedNodeIds: string[]) {
     })),
     edges: graphData.edges.map((edge) => ({
       ...edge,
-      hidden:
-        !visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target),
+      hidden: !visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target),
     })),
   }
 }

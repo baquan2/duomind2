@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import analytics, analyze, auth, explore, history, onboarding, quiz
+from app.routers import analytics, analyze, auth, explore, history, mentor, onboarding, quiz
 
 
 app = FastAPI(
@@ -26,6 +26,7 @@ app.include_router(explore.router, prefix="/api/explore", tags=["explore"])
 app.include_router(quiz.router, prefix="/api/quiz", tags=["quiz"])
 app.include_router(history.router, prefix="/api/history", tags=["history"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(mentor.router, prefix="/api/mentor", tags=["mentor"])
 
 
 @app.get("/")

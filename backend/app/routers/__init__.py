@@ -1,4 +1,4 @@
-from . import analytics, analyze, auth, explore, history, onboarding, quiz
+from . import analytics, analyze, auth, explore, history, mentor, onboarding, quiz
 
 __all__ = [
     "analytics",
@@ -6,6 +6,7 @@ __all__ = [
     "auth",
     "explore",
     "history",
+    "mentor",
     "onboarding",
     "quiz",
 ]

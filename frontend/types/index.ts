@@ -6,6 +6,7 @@ export interface UserProfile {
   full_name?: string | null
   avatar_url?: string | null
   is_onboarded: boolean
+  has_seen_intro_tour?: boolean
   created_at?: string | null
 }
 
@@ -72,14 +73,124 @@ export interface InfographicData {
   footer_note?: string
 }
 
+export interface KnowledgeDetailSection {
+  title: string
+  content: string
+}
+
+export interface KnowledgeTeachingAdaptation {
+  focus_priority: string
+  tone: string
+  depth_control: string
+  example_strategy: string
+}
+
+export interface KnowledgeDetailData {
+  title: string
+  summary: string
+  detailed_sections: {
+    core_concept: KnowledgeDetailSection
+    mechanism: KnowledgeDetailSection
+    components_and_relationships: KnowledgeDetailSection
+    persona_based_example: KnowledgeDetailSection
+    real_world_applications: KnowledgeDetailSection
+    common_misconceptions: KnowledgeDetailSection
+    next_step_self_study: KnowledgeDetailSection
+  }
+  teaching_adaptation: KnowledgeTeachingAdaptation
+}
+
 export interface ExploreResult {
   session_id: string
   title: string
   summary: string
   key_points: string[]
-  infographic_data: InfographicData
+  knowledge_detail_data: KnowledgeDetailData
   topic_tags: string[]
   mindmap_data: MindMapData
+}
+
+export type MentorIntent =
+  | "career_roles"
+  | "market_outlook"
+  | "skill_gap"
+  | "learning_roadmap"
+  | "career_fit"
+  | "general_guidance"
+
+export interface MentorCareerPath {
+  role: string
+  fit_reason: string
+  entry_level: string
+  required_skills: string[]
+  next_step: string
+}
+
+export interface MentorMarketSignal {
+  role_name: string
+  demand_summary: string
+  top_skills: string[]
+  source_name: string
+  source_url: string
+}
+
+export interface MentorSkillGap {
+  skill: string
+  gap_level: "high" | "medium" | "low" | string
+  why_it_matters: string
+  suggested_action: string
+}
+
+export interface MentorSource {
+  label: string
+  url: string
+}
+
+export interface MentorMessagePayload {
+  answer: string
+  career_paths: MentorCareerPath[]
+  market_signals: MentorMarketSignal[]
+  skill_gaps: MentorSkillGap[]
+  recommended_learning_steps: string[]
+  suggested_followups: string[]
+  sources: MentorSource[]
+}
+
+export interface MentorThreadSummary {
+  id: string
+  title: string
+  status: string
+  last_message_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface MentorMessageItem {
+  id: string
+  thread_id: string
+  role: "user" | "assistant" | "system"
+  intent?: MentorIntent | string | null
+  content: string
+  response_data?: MentorMessagePayload | null
+  sources: MentorSource[]
+  created_at?: string | null
+}
+
+export interface MentorThreadDetail {
+  thread: MentorThreadSummary
+  messages: MentorMessageItem[]
+}
+
+export interface MentorSuggestedQuestionsResponse {
+  questions: string[]
+}
+
+export interface MentorChatResponse extends MentorMessagePayload {
+  thread_id: string
+  thread_title: string
+  message_id: string
+  intent: MentorIntent
+  messages: MentorMessageItem[]
 }
 
 export interface MindMapNodeData extends Record<string, unknown> {
@@ -110,7 +221,7 @@ export interface LearningSession {
   accuracy_score?: number | null
   accuracy_assessment?: string | null
   corrections?: Correction[]
-  infographic_data?: InfographicData | null
+  infographic_data?: KnowledgeDetailData | null
   mindmap_data?: MindMapData | null
   language?: string
   created_at: string

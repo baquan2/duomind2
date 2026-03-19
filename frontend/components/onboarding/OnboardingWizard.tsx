@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import apiClient from "@/lib/api/client"
+import { submitOnboarding } from "@/lib/api/onboarding"
 import type { OnboardingData, OnboardingResponse } from "@/types"
 
 const TOTAL_STEPS = 4
@@ -87,11 +87,8 @@ export function OnboardingWizard() {
     setError(null)
 
     try {
-      const response = await apiClient.post<OnboardingResponse>(
-        "/api/onboarding/submit",
-        payload
-      )
-      setAiResult(response.data)
+      const response = await submitOnboarding(payload)
+      setAiResult(response)
     } catch (submissionError) {
       setError(getErrorMessage(submissionError))
     } finally {
@@ -109,8 +106,8 @@ export function OnboardingWizard() {
           Cá nhân hóa trải nghiệm học tập của bạn
         </h1>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Wizard 4 bước này giúp DUO MIND xác định persona, độ khó và cách trình bày
-          phù hợp trước khi bạn bắt đầu dashboard.
+          Wizard 4 bước này giúp DUO MIND xác định persona, độ khó và cách trình bày phù
+          hợp trước khi bạn bắt đầu dashboard.
         </p>
       </div>
 

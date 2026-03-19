@@ -29,18 +29,6 @@ STOP_WORDS = {
     "gian",
 }
 
-TOPIC_FILLER_PHRASES = [
-    "la gi",
-    "hoat dong nhu the nao",
-    "nhu the nao",
-    "ra sao",
-    "giai thich don gian",
-    "giai thich",
-    "cho nguoi moi bat dau",
-    "co ban",
-    "tong quan",
-]
-
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
@@ -49,16 +37,6 @@ def normalize_text(text: str) -> str:
 def strip_accents(text: str) -> str:
     normalized = unicodedata.normalize("NFD", text)
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
-
-
-def clean_topic_text(text: str) -> str:
-    cleaned = normalize_text(text)
-    accentless = strip_accents(cleaned.lower())
-    for phrase in TOPIC_FILLER_PHRASES:
-        accentless = accentless.replace(phrase, " ")
-    accentless = re.sub(r"\s*[:\-|]\s*", " ", accentless)
-    accentless = re.sub(r"\s{2,}", " ", accentless).strip(" .,-")
-    return accentless or strip_accents(cleaned)
 
 
 def split_sentences(text: str, limit: int = 5) -> list[str]:
@@ -70,12 +48,37 @@ def split_sentences(text: str, limit: int = 5) -> list[str]:
     return chunks[:limit]
 
 
+def sentence_case(text: str) -> str:
+    normalized = normalize_text(text)
+    if not normalized:
+        return normalized
+    return normalized[0].upper() + normalized[1:]
+
+
 def infer_title(text: str, fallback: str) -> str:
     first_sentence = split_sentences(text, 1)
     if not first_sentence:
         return fallback
-    title = first_sentence[0][:60].strip(" .:-")
-    return title or fallback
+    title = first_sentence[0][:80].strip(" .:-")
+    return sentence_case(title or fallback)
+
+
+def infer_topic_from_prompt(prompt: str) -> str:
+    cleaned = normalize_text(prompt).strip(" .?!")
+    suffix_patterns = [
+        r"\blà gì\b",
+        r"\bhoạt động như thế nào\b",
+        r"\bvận hành ra sao\b",
+        r"\bvận hành như thế nào\b",
+        r"\bra sao\b",
+        r"\bnhư thế nào\b",
+        r"\bthế nào\b",
+    ]
+    for pattern in suffix_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip(" .?!,:;-")
+    if not cleaned:
+        return "chủ đề mới"
+    return sentence_case(cleaned)
 
 
 def extract_key_points(text: str, limit: int = 5) -> list[str]:
@@ -85,74 +88,106 @@ def extract_key_points(text: str, limit: int = 5) -> list[str]:
 
     normalized = normalize_text(text)
     if not normalized:
-        return ["Chua co du du lieu de tao y chinh."]
-    return [normalized[:160]]
+        return ["Chưa có đủ dữ liệu để tạo ý chính."]
+    return [normalized[:220]]
 
 
 def extract_topic_tags(text: str, limit: int = 5) -> list[str]:
-    cleaned = clean_topic_text(text)
-    phrases = [
-        normalize_text(part)
-        for part in re.split(r"\s*(?:,|/|-|\bva\b|\band\b)\s*", cleaned, flags=re.IGNORECASE)
-        if normalize_text(part)
-    ]
+    cleaned = normalize_text(text)
+    cleaned = re.sub(r"[#*_`~\[\]{}()<>?!]+", " ", cleaned)
+    cleaned = re.sub(r"\s*[:|/,-]\s*", " ", cleaned)
+    tokens = re.findall(r"[0-9A-Za-zÀ-ỹĐđ]+", cleaned, flags=re.UNICODE)
 
-    filtered_phrases: list[str] = []
-    for phrase in phrases:
-        normalized_phrase = phrase.lower()
-        if normalized_phrase in STOP_WORDS or len(normalized_phrase) < 3:
+    seen: set[str] = set()
+    result: list[str] = []
+    for token in tokens:
+        key = strip_accents(token).lower()
+        if len(key) < 3 or key in STOP_WORDS or key.isdigit():
             continue
-        if normalized_phrase not in [item.lower() for item in filtered_phrases]:
-            filtered_phrases.append(phrase)
-        if len(filtered_phrases) >= limit:
-            return filtered_phrases
-
-    words = re.findall(r"[a-z0-9_]{4,}", cleaned.lower())
-    seen: list[str] = []
-    for word in words:
-        if word in STOP_WORDS or word.isdigit():
+        if key in seen:
             continue
-        if word not in seen:
-            seen.append(word)
-        if len(seen) >= limit:
+        seen.add(key)
+        result.append(token.lower())
+        if len(result) >= limit:
             break
-    return seen
+    return result
 
 
-def build_basic_mindmap(title: str, key_points: list[str]) -> dict[str, Any]:
-    points = key_points[:5] or ["tong quan", "y chinh", "vi du", "ung dung"]
+def _build_long_paragraph(title: str, angle: str, focus: str, application: str) -> str:
+    return (
+        f"Ở góc nhìn {angle}, {title} không chỉ là một nhãn khái niệm mà là một phần của hệ thống tri thức có logic riêng. {focus} "
+        f"Điều quan trọng là thấy được vì sao nội dung này xuất hiện, nó giải quyết vấn đề gì, và mối liên hệ của nó với các quyết định hoặc hiện tượng trong thực tế. {application}"
+    )
+
+
+def _build_direct_paragraph(opening: str, explanation: str, application: str) -> str:
+    return f"{opening} {explanation} {application}"
+
+
+def _compact_sentence(sentence: str, max_words: int = 8, max_chars: int = 54) -> str:
+    normalized = normalize_text(sentence).strip(" .")
+    first_clause = re.split(r"[:;,.]", normalized, maxsplit=1)[0].strip()
+    if first_clause:
+        normalized = first_clause
+    words = normalized.split()
+    shortened = " ".join(words[:max_words]).strip()
+    if len(shortened) > max_chars:
+        shortened = shortened[:max_chars].rstrip(" ,.;:")
+    return shortened or normalized[:max_chars].rstrip(" ,.;:")
+
+
+def _make_sub_point_from_sentence(
+    sentence: str,
+    fallback_label: str,
+    fallback_description: str,
+) -> dict[str, str]:
+    normalized = normalize_text(sentence)
+    return {
+        "label": _compact_sentence(normalized, max_words=6, max_chars=34) or fallback_label,
+        "full_label": normalized or fallback_description,
+        "description": normalized[:110] or fallback_description,
+        "details": normalized or fallback_description,
+    }
+
+
+def _create_mindmap_nodes_from_sections(
+    title: str,
+    sections: list[dict[str, str]],
+) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = [
         {
             "id": "root",
             "type": "root",
             "data": {
-                "label": title[:36],
+                "label": title[:42],
                 "full_label": title,
-                "description": "Chu de trung tam",
-                "details": "Tam cua so do kien thuc.",
+                "description": "Chủ đề trung tâm",
+                "details": f"Sơ đồ này tóm lược những khía cạnh quan trọng nhất của chủ đề {title}.",
             },
             "position": {"x": 0, "y": 0},
         }
     ]
     edges: list[dict[str, Any]] = []
 
-    palette = ["#0f766e", "#2563eb", "#7c3aed", "#ea580c", "#0891b2"]
-    x_positions = [-320, -160, 0, 160, 320]
+    palette = ["#0f766e", "#2563eb", "#7c3aed", "#ea580c", "#0891b2", "#be185d"]
+    x_positions = [-520, -300, -80, 160, 400, 640]
 
-    for index, point in enumerate(points):
+    for index, section in enumerate(sections[:6]):
         main_id = f"main_{index}"
+        x_pos = x_positions[index] if index < len(x_positions) else (index - 2) * 220
+
         nodes.append(
             {
                 "id": main_id,
                 "type": "main",
                 "data": {
-                    "label": point[:42],
-                    "full_label": point,
-                    "description": "Y chinh",
-                    "details": point,
+                    "label": section["short_label"],
+                    "full_label": section["title"],
+                    "description": section["description"],
+                    "details": section["details"],
                     "color": palette[index % len(palette)],
                 },
-                "position": {"x": x_positions[index % len(x_positions)], "y": 180},
+                "position": {"x": x_pos, "y": 210},
             }
         )
         edges.append(
@@ -164,108 +199,231 @@ def build_basic_mindmap(title: str, key_points: list[str]) -> dict[str, Any]:
             }
         )
 
-        sub_id = f"sub_{index}_0"
-        nodes.append(
-            {
-                "id": sub_id,
-                "type": "sub",
-                "data": {
-                    "label": "Chi tiet",
-                    "full_label": point,
-                    "description": "Mo rong nhanh nay",
-                    "details": point,
-                },
-                "position": {
-                    "x": x_positions[index % len(x_positions)] + 40,
-                    "y": 320,
-                },
-            }
-        )
-        edges.append(
-            {
-                "id": f"edge_{main_id}_{sub_id}",
-                "source": main_id,
-                "target": sub_id,
-                "type": "smoothstep",
-            }
-        )
+        for sub_index, detail in enumerate(section["sub_points"]):
+            sub_id = f"sub_{index}_{sub_index}"
+            nodes.append(
+                {
+                    "id": sub_id,
+                    "type": "sub",
+                    "data": {
+                        "label": detail["label"],
+                        "full_label": detail["full_label"],
+                        "description": detail["description"],
+                        "details": detail["details"],
+                    },
+                    "position": {
+                        "x": x_pos + ((sub_index % 2) * 110) - 55,
+                        "y": 390 + (sub_index * 115),
+                    },
+                }
+            )
+            edges.append(
+                {
+                    "id": f"edge_{main_id}_{sub_id}",
+                    "source": main_id,
+                    "target": sub_id,
+                    "type": "smoothstep",
+                }
+            )
 
     return {"nodes": nodes, "edges": edges}
 
 
-def build_basic_infographic(
-    title: str,
-    summary: str,
-    key_points: list[str],
-) -> dict[str, Any]:
-    sections = [
-        {
-            "icon": str(index + 1),
-            "heading": f"Diem {index + 1}",
-            "content": point,
-        }
-        for index, point in enumerate(key_points[:5])
+def build_basic_mindmap(title: str, key_points: list[str]) -> dict[str, Any]:
+    points = key_points[:5] or [
+        "Khái niệm cốt lõi và mục tiêu chính của chủ đề.",
+        "Cơ chế hoặc nguyên lý hoạt động quan trọng nhất.",
+        "Các thành phần cấu thành và quan hệ giữa chúng.",
+        "Ví dụ minh họa, ứng dụng hoặc tình huống thực tế.",
+        "Rủi ro, giới hạn và hướng tự học tiếp theo.",
     ]
-    if not sections:
-        sections = [
+
+    sections: list[dict[str, str]] = []
+    for index, point in enumerate(points):
+        short_label = f"Ý chính {index + 1}"
+        sections.append(
             {
-                "icon": "1",
-                "heading": "Tong quan",
-                "content": summary or "Chua co du du lieu de tao infographic chi tiet.",
+                "short_label": short_label,
+                "title": point,
+                "description": "Một trục nội dung quan trọng trong chủ đề.",
+                "details": point,
+                "sub_points": [
+                    _make_sub_point_from_sentence(
+                        point,
+                        f"Ý {index + 1}",
+                        "Tóm tắt trọng tâm của nhánh này.",
+                    ),
+                    _make_sub_point_from_sentence(
+                        f"Ý này giúp người học liên hệ {title} với ví dụ thực tế hoặc ứng dụng gần gũi hơn.",
+                        "Liên hệ thực tế",
+                        "Liên hệ kiến thức với tình huống quen thuộc.",
+                    ),
+                ],
             }
+        )
+
+    return _create_mindmap_nodes_from_sections(title, sections)
+
+
+def build_explore_fallback(prompt: str) -> dict[str, Any]:
+    title = infer_topic_from_prompt(prompt)
+    topic_tags = extract_topic_tags(title, limit=4)
+    key_points = [
+        f"Khái niệm: {title} cần được nhìn như một hệ thống kiến thức có mục tiêu, phạm vi áp dụng và giá trị riêng.",
+        f"Cơ chế: muốn hiểu {title}, cần nắm logic vận hành hoặc quan hệ nhân quả phía sau thay vì học thuộc định nghĩa.",
+        f"Thành phần: chủ đề này luôn gồm các yếu tố chính và mối liên hệ giữa chúng, không thể hiểu đúng nếu tách rời từng phần.",
+        f"Ứng dụng: giá trị của {title} chỉ rõ khi đặt vào bối cảnh học tập, công việc hoặc quyết định thực tế.",
+        f"Lưu ý: các nhầm lẫn phổ biến thường xuất hiện khi người học nhớ ví dụ nhưng chưa hiểu bản chất và giới hạn của chủ đề.",
+    ]
+    summary = "\n".join(
+        [
+            f"- {title} nên được học theo trục khái niệm, cơ chế, thành phần, ví dụ và ứng dụng thay vì đọc rời rạc từng mảnh thông tin.",
+            f"- Trọng tâm của chủ đề nằm ở việc hiểu bản chất vận hành và mối liên hệ giữa các phần chính.",
+            f"- Ví dụ và ứng dụng thực tế giúp người học chuyển kiến thức từ mức ghi nhớ sang mức sử dụng được.",
+            f"- Những hiểu lầm phổ biến thường đến từ việc học thuộc kết quả mà bỏ qua nguyên lý tạo ra kết quả đó.",
         ]
+    )
 
     return {
-        "type": "list",
-        "theme_color": "#0f766e",
         "title": title,
-        "subtitle": summary[:160] if summary else "Tom tat nhanh ve chu de",
-        "sections": sections,
-        "footer_note": "Infographic du phong duoc tao khi AI chua tra du du lieu.",
+        "summary": summary,
+        "key_points": key_points,
+        "topic_tags": topic_tags,
+        "detailed_sections": {
+            "core_concept": {
+                "title": "Khái niệm cốt lõi",
+                "content": _build_long_paragraph(
+                    title,
+                    "khái niệm nền tảng",
+                    f"Cốt lõi của {title} nằm ở việc xác định bản chất thật sự của khái niệm, phạm vi áp dụng và giá trị mà nó tạo ra trong học tập hoặc công việc.",
+                    "Người học nên trả lời được ba câu hỏi: nó là gì, dùng để làm gì, và vì sao nó quan trọng trong bức tranh lớn hơn.",
+                ),
+            },
+            "mechanism": {
+                "title": "Bản chất / cơ chế hoạt động",
+                "content": _build_long_paragraph(
+                    title,
+                    "cơ chế vận hành",
+                    f"Phần này cần chỉ ra trình tự hoặc nguyên lý bên trong: đầu vào là gì, quá trình xử lý diễn ra ra sao, và đầu ra có ý nghĩa gì.",
+                    "Khi hiểu được cơ chế, người học sẽ không còn phụ thuộc vào việc học thuộc lòng mà có thể tự suy luận khi gặp ví dụ mới.",
+                ),
+            },
+            "components_and_relationships": {
+                "title": "Các thành phần chính và quan hệ giữa chúng",
+                "content": _build_long_paragraph(
+                    title,
+                    "cấu trúc hệ thống",
+                    f"Mỗi chủ đề đều có các phần tử cấu thành riêng, và điều quan trọng không chỉ là biết tên từng phần mà còn là hiểu chúng tác động qua lại như thế nào.",
+                    "Nếu tách riêng từng phần mà không thấy mối liên hệ, người học sẽ dễ nhớ rời rạc và khó áp dụng vào tình huống tổng hợp.",
+                ),
+            },
+            "persona_based_example": {
+                "title": "Ví dụ trực quan theo đúng persona",
+                "content": (
+                    f"Để học sâu {title}, ví dụ nên bám sát bối cảnh thực tế của người học. "
+                    f"Nếu người học thiên về ứng dụng, nên dùng một dự án nhỏ, quy trình công việc, hoặc trường hợp thường gặp để mô tả chủ đề. "
+                    f"Nếu người học thiên về trực quan, nên diễn giải bằng phép so sánh, sơ đồ tư duy, hoặc một tình huống có trình tự rõ ràng để họ dễ hình dung."
+                ),
+            },
+            "real_world_applications": {
+                "title": "Ứng dụng thực tế",
+                "content": (
+                    f"{title} chỉ thực sự có giá trị khi người học thấy nó xuất hiện ở đâu trong thực tế, tại sao người ta cần nó, "
+                    f"và điều gì xảy ra nếu thiếu kiến thức này. Phần ứng dụng nên chỉ ra ít nhất một bối cảnh học tập và một bối cảnh công việc "
+                    f"để người học biết cách chuyển kiến thức từ lý thuyết sang hành động."
+                ),
+            },
+            "common_misconceptions": {
+                "title": "Nhầm lẫn phổ biến",
+                "content": (
+                    f"Khi mới tiếp cận {title}, người học thường nhầm giữa việc nhớ ví dụ với việc hiểu bản chất, hoặc nhầm giữa kết quả quan sát được và cơ chế tạo ra kết quả đó. "
+                    f"Cách sửa là luôn quay lại câu hỏi: điều gì đang diễn ra bên trong, vì sao nó diễn ra như vậy, và điều kiện nào làm cho kết quả thay đổi."
+                ),
+            },
+            "next_step_self_study": {
+                "title": "Cách tự học tiếp trong 1 buổi ngắn",
+                "content": (
+                    f"Trong một buổi ngắn, người học nên chia việc học {title} thành ba bước: đọc lại khái niệm cốt lõi, "
+                    f"tự giải thích cơ chế bằng lời của mình, rồi làm một ví dụ nhỏ hoặc tự vẽ lại mối quan hệ giữa các thành phần. "
+                    f"Nếu còn thời gian, hãy ghi lại ba điều mình đã hiểu rõ hơn và một câu hỏi còn mơ hồ để đào sâu ở buổi sau."
+                ),
+            },
+        },
+        "teaching_adaptation": {
+            "focus_priority": "Ưu tiên hiểu bản chất trước, rồi mới mở rộng sang ví dụ và ứng dụng.",
+            "tone": "Giải thích rõ ràng, có tính sư phạm, tránh văn phong máy móc.",
+            "depth_control": "Đi từ nền tảng đến cơ chế, rồi mới sang liên hệ thực tế và bước tự học tiếp.",
+            "example_strategy": "Dùng ví dụ gần ngữ cảnh người học để biến kiến thức thành thứ có thể hình dung và áp dụng.",
+        },
     }
+
+
+def build_explore_mindmap(
+    title: str,
+    knowledge_detail_data: dict[str, Any],
+) -> dict[str, Any]:
+    detailed_sections = knowledge_detail_data.get("detailed_sections", {})
+
+    section_specs = [
+        ("core_concept", "Khái niệm cốt lõi", "Nền tảng để hiểu đúng chủ đề."),
+        ("mechanism", "Cơ chế hoạt động", "Giải thích điều gì diễn ra bên trong."),
+        ("components_and_relationships", "Thành phần và quan hệ", "Cho thấy cấu trúc và sự liên kết."),
+        ("persona_based_example", "Ví dụ theo persona", "Giúp người học hình dung nhanh hơn."),
+        ("real_world_applications", "Ứng dụng thực tế", "Biến kiến thức thành giá trị sử dụng."),
+        ("common_misconceptions", "Nhầm lẫn phổ biến", "Chỉ ra các chỗ dễ hiểu sai."),
+    ]
+
+    sections: list[dict[str, Any]] = []
+    for key, short_label, default_description in section_specs:
+        section = detailed_sections.get(key) or {}
+        content = normalize_text(str(section.get("content") or ""))
+        title_text = normalize_text(str(section.get("title") or short_label))
+        sentences = split_sentences(content, 3)
+        if not sentences:
+            sentences = [default_description]
+        full_section_label = (
+            f"{title_text}: {sentences[0]}" if sentences[0] not in title_text else title_text
+        )
+
+        sections.append(
+            {
+                "short_label": short_label,
+                "title": full_section_label[:180],
+                "description": sentences[0][:120],
+                "details": content[:220] or default_description,
+                "sub_points": [
+                    _make_sub_point_from_sentence(
+                        sentences[0],
+                        "Ý chính",
+                        default_description,
+                    ),
+                    _make_sub_point_from_sentence(
+                        sentences[1] if len(sentences) > 1 else default_description,
+                        "Mở rộng",
+                        default_description,
+                    ),
+                ],
+            }
+        )
+
+    return _create_mindmap_nodes_from_sections(title, sections)
 
 
 def build_analyze_fallback(content: str) -> dict[str, Any]:
     summary_sentences = split_sentences(content, 4)
     summary = (
         "\n".join(f"- {sentence}" for sentence in summary_sentences)
-        or normalize_text(content)[:240]
+        or normalize_text(content)[:260]
     )
     key_points = extract_key_points(content)
     return {
-        "title": infer_title(content, "Phan tich noi dung"),
+        "title": infer_title(content, "Phân tích nội dung"),
         "accuracy_score": None,
         "accuracy_assessment": "unverifiable",
-        "summary": summary or "Chua co du du lieu de tao tom tat.",
+        "summary": summary or "Chưa có đủ dữ liệu để tạo tóm tắt.",
         "key_points": key_points,
         "corrections": [],
         "topic_tags": extract_topic_tags(content),
-    }
-
-
-def build_explore_fallback(prompt: str) -> dict[str, Any]:
-    topic = clean_topic_text(prompt) or "chu de moi"
-    title = infer_title(topic, "Kham pha chu de")
-    key_points = [
-        "Khai niem cot loi va muc tieu chinh.",
-        "Cach van hanh o muc co ban.",
-        "Thanh phan quan trong va moi lien he giua chung.",
-        "Vi du, ung dung hoac tac dong thuc te.",
-        "Rui ro, gioi han va huong tim hieu tiep theo.",
-    ]
-    summary = "\n".join(
-        [
-            f"- Khai niem cot loi cua chu de {topic}.",
-            "- Co che hoac cach van hanh o muc co ban.",
-            "- Thanh phan quan trong va moi lien he giua chung.",
-            "- Vi du, ung dung hoac tac dong thuc te can nho.",
-        ]
-    )
-    return {
-        "title": title,
-        "summary": summary,
-        "key_points": key_points,
-        "topic_tags": extract_topic_tags(topic, limit=3),
     }
 
 
@@ -277,12 +435,12 @@ def build_quiz_fallback(
 ) -> list[dict[str, Any]]:
     points = key_points[:4] or extract_key_points(summary, 4)
     if not points:
-        points = [f"Y chinh ve {title}"]
+        points = [f"Ý chính về {title}"]
 
     generic_distractors = [
-        "Mot chi tiet khong lien quan truc tiep den noi dung chinh.",
-        "Mot nhan dinh qua chung va thieu can cu.",
-        "Mot vi du khong phan anh dung trong tam cua chu de.",
+        "Một chi tiết không liên quan trực tiếp đến nội dung chính.",
+        "Một nhận định quá chung và thiếu căn cứ.",
+        "Một ví dụ không phản ánh đúng trọng tâm của chủ đề.",
     ]
 
     questions: list[dict[str, Any]] = []
@@ -307,10 +465,10 @@ def build_quiz_fallback(
             {
                 "order_index": index,
                 "question_type": "multiple_choice",
-                "question_text": f"Y nao phu hop nhat voi noi dung chinh cua phan {index + 1}?",
+                "question_text": f"Ý nào phù hợp nhất với nội dung chính của phần {index + 1}?",
                 "options": options,
                 "correct_answer": option_ids[correct_position],
-                "explanation": f"Dap an dung la y bam sat noi dung: {correct_text}",
+                "explanation": f"Đáp án đúng là ý bám sát nội dung: {correct_text}",
                 "difficulty": "medium",
             }
         )
@@ -320,28 +478,28 @@ def build_quiz_fallback(
             {
                 "order_index": len(questions),
                 "question_type": "open",
-                "question_text": f"Theo ban, {title} co the duoc ap dung nhu the nao trong thuc te?",
+                "question_text": f"Theo bạn, {title} có thể được áp dụng như thế nào trong thực tế?",
                 "thinking_hints": [
-                    "Neu boi canh cu the",
-                    "Giai thich vi sao vi du do phu hop",
+                    "Nêu bối cảnh cụ thể",
+                    "Giải thích vì sao ví dụ đó phù hợp",
                 ],
                 "sample_answer_points": [
-                    "Neu duoc vi du thuc te",
-                    "Lien he dung voi y chinh cua chu de",
+                    "Nêu được ví dụ thực tế",
+                    "Liên hệ đúng với ý chính của chủ đề",
                 ],
                 "difficulty": "medium",
             },
             {
                 "order_index": len(questions) + 1,
                 "question_type": "open",
-                "question_text": f"Neu phai giai thich {title} cho nguoi moi bat dau, ban se bat dau tu dau?",
+                "question_text": f"Nếu phải giải thích {title} cho người mới bắt đầu, bạn sẽ bắt đầu từ đâu?",
                 "thinking_hints": [
-                    "Chon y co ban nhat",
-                    "Uu tien vi du de hieu",
+                    "Chọn ý cơ bản nhất",
+                    "Ưu tiên ví dụ dễ hiểu",
                 ],
                 "sample_answer_points": [
-                    "Bat dau tu dinh nghia cot loi",
-                    "Dung vi du truc quan",
+                    "Bắt đầu từ định nghĩa cốt lõi",
+                    "Dùng ví dụ trực quan",
                 ],
                 "difficulty": "easy",
             },
@@ -365,13 +523,13 @@ def build_open_feedback_fallback(user_answer: str) -> dict[str, Any]:
     return {
         "critical_thinking_score": score,
         "ai_feedback": (
-            "He thong dang dung che do danh gia du phong. "
-            "Ban da co cau tra loi buoc dau, nhung nen bo sung them lap luan, vi du "
-            "va lien he truc tiep voi noi dung vua hoc de cau tra loi chat che hon."
+            "Hệ thống đang dùng chế độ đánh giá dự phòng. "
+            "Bạn đã có câu trả lời bước đầu, nhưng nên bổ sung thêm lập luận, ví dụ "
+            "và liên hệ trực tiếp với nội dung vừa học để câu trả lời chặt chẽ hơn."
         ),
-        "strengths": ["Da dua ra quan diem hoac huong tra loi ban dau."],
+        "strengths": ["Đã đưa ra quan điểm hoặc hướng trả lời ban đầu."],
         "improvements": [
-            "Bo sung vi du cu the",
-            "Giai thich ro vi sao lap luan cua ban hop ly",
+            "Bổ sung ví dụ cụ thể",
+            "Giải thích rõ vì sao lập luận của bạn hợp lý",
         ],
     }

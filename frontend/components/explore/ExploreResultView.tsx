@@ -1,14 +1,19 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { BookOpenText, Download, Loader2 } from "lucide-react"
+import type { ReactNode } from "react"
+import { useState } from "react"
 
 import { ExploreSummary } from "@/components/explore/ExploreSummary"
-import { Infographic } from "@/components/explore/Infographic"
+import { KnowledgeDetail } from "@/components/explore/KnowledgeDetail"
 import { MindMapViewer } from "@/components/mindmap/MindMapViewer"
 import { QuizContainer } from "@/components/quiz/QuizContainer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { getSessionDetail } from "@/lib/api/history"
+import { exportSessionAsWord } from "@/lib/session-export"
 import type { ExploreResult } from "@/types"
 
 interface ExploreResultViewProps {
@@ -18,7 +23,7 @@ interface ExploreResultViewProps {
 
 const SECTION_LINKS = [
   { id: "explore-summary", label: "Tổng quan" },
-  { id: "explore-infographic", label: "Infographic" },
+  { id: "explore-knowledge", label: "Chi tiết kiến thức" },
   { id: "explore-mindmap", label: "Mind map" },
   { id: "explore-quiz", label: "Ôn tập" },
 ]
@@ -27,13 +32,25 @@ export function ExploreResultView({
   result,
   showHeader = true,
 }: ExploreResultViewProps) {
+  const [downloading, setDownloading] = useState(false)
   const coreTags = result.topic_tags.slice(0, 3)
+  const knowledgeSectionCount = Object.keys(result.knowledge_detail_data?.detailed_sections ?? {}).length
 
   const scrollToSection = (sectionId: string) => {
     document.getElementById(sectionId)?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     })
+  }
+
+  const handleDownloadWord = async () => {
+    try {
+      setDownloading(true)
+      const sessionDetail = await getSessionDetail(result.session_id)
+      await exportSessionAsWord(sessionDetail)
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -46,7 +63,7 @@ export function ExploreResultView({
       {showHeader ? (
         <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
           <div className="rounded-[2rem] border border-border/70 bg-[linear-gradient(135deg,_rgba(15,118,110,0.1),_rgba(255,247,221,0.82))] p-6 shadow-sm shadow-primary/10">
-            <div className="space-y-3">
+            <div className="space-y-4">
               <Badge className="border-0 bg-primary text-primary-foreground">
                 Phiên {result.session_id.slice(0, 8)}
               </Badge>
@@ -55,8 +72,9 @@ export function ExploreResultView({
                   {result.title}
                 </h2>
                 <p className="max-w-3xl text-sm leading-7 text-foreground/75">
-                  Kết quả được chia theo từng phần rõ ràng để bạn đọc nhanh, xem hình hóa
-                  và chuyển sang ôn tập mà không phải đoán nên bắt đầu từ đâu.
+                  Kết quả được chia theo từng phần rõ ràng để bạn đọc nhanh, hiểu sâu, nhìn
+                  được toàn cảnh chủ đề và chuyển sang ôn tập mà không phải đoán nên bắt đầu
+                  từ đâu.
                 </p>
               </div>
               {coreTags.length ? (
@@ -68,6 +86,20 @@ export function ExploreResultView({
                   ))}
                 </div>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full bg-background/90"
+                onClick={() => void handleDownloadWord()}
+                disabled={downloading}
+              >
+                {downloading ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 size-4" />
+                )}
+                Tải file Word
+              </Button>
             </div>
           </div>
 
@@ -78,14 +110,14 @@ export function ExploreResultView({
               description="Các điểm quan trọng đã được AI gom lại."
             />
             <ResultStat
-              title="Infographic"
-              value={result.infographic_data?.sections?.length ? "Sẵn sàng" : "Dự phòng"}
-              description="Đọc theo khối nhỏ, dễ quét và dễ nhớ hơn."
+              title="Chi tiết kiến thức"
+              value={knowledgeSectionCount ? "Sẵn sàng" : "Dự phòng"}
+              description="Giải thích sâu theo logic học tập và bối cảnh persona."
             />
             <ResultStat
               title="Mind map"
               value={result.mindmap_data?.nodes?.length ? "Đã tải" : "Đang chờ"}
-              description="Sơ đồ khái niệm hiển thị ngay trong cùng phiên."
+              description="Sơ đồ khái niệm hiển thị trong cùng phiên học."
             />
           </div>
         </div>
@@ -121,19 +153,19 @@ export function ExploreResultView({
       </SectionBlock>
 
       <SectionBlock
-        id="explore-infographic"
+        id="explore-knowledge"
         eyebrow="Bước 2"
-        title="Infographic"
-        description="Phần này trình bày lại nội dung dưới dạng khối trực quan để bạn đọc nhanh hơn."
+        title="Chi tiết kiến thức"
+        description="Phần này trình bày lại chủ đề theo logic học tập sâu: bản chất, cơ chế, ví dụ theo persona, ứng dụng và bước tự học tiếp."
       >
-        <Infographic data={result.infographic_data} />
+        <KnowledgeDetail data={result.knowledge_detail_data} />
       </SectionBlock>
 
       <SectionBlock
         id="explore-mindmap"
         eyebrow="Bước 3"
         title="Mind map"
-        description="Sơ đồ được dựng trực tiếp từ kết quả AI đã tổng hợp, không cần chờ thêm request phụ."
+        description="Sơ đồ được dựng trực tiếp từ kết quả AI đã tổng hợp để bạn nhìn được toàn cảnh chủ đề."
       >
         <MindMapViewer sessionId={result.session_id} initialData={result.mindmap_data} />
       </SectionBlock>
@@ -142,7 +174,7 @@ export function ExploreResultView({
         id="explore-quiz"
         eyebrow="Bước 4"
         title="Ôn tập"
-        description="Sau khi xem tổng quan, infographic và sơ đồ, bạn có thể chuyển sang quiz để kiểm tra lại."
+        description="Sau khi xem tổng quan, chi tiết kiến thức và sơ đồ, bạn có thể chuyển sang quiz để kiểm tra lại."
       >
         <QuizContainer sessionId={result.session_id} />
       </SectionBlock>
@@ -181,14 +213,17 @@ function SectionBlock({
   eyebrow: string
   title: string
   description: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <section id={id} className="scroll-mt-24 space-y-3">
       <div className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-[0.24em] text-primary">
-          {eyebrow}
-        </p>
+        <div className="flex items-center gap-2">
+          <BookOpenText className="size-4 text-primary" />
+          <p className="text-xs font-medium uppercase tracking-[0.24em] text-primary">
+            {eyebrow}
+          </p>
+        </div>
         <h3 className="font-display text-2xl font-semibold">{title}</h3>
         <p className="text-sm leading-6 text-muted-foreground">{description}</p>
       </div>

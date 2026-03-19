@@ -42,7 +42,7 @@ class GeminiService:
                 generation_config={
                     "temperature": 0.7,
                     "top_p": 0.95,
-                    "max_output_tokens": 8192,
+                    "max_output_tokens": 12288,
                 },
             )
         return self._text_model
@@ -53,9 +53,9 @@ class GeminiService:
             self._json_model = genai.GenerativeModel(
                 model_name=self._configured_model_name,
                 generation_config={
-                    "temperature": 0.3,
-                    "top_p": 0.95,
-                    "max_output_tokens": 8192,
+                    "temperature": 0.1,
+                    "top_p": 0.9,
+                    "max_output_tokens": 12288,
                     "response_mime_type": "application/json",
                 },
             )
@@ -75,17 +75,36 @@ class GeminiService:
         text = re.sub(r"\s*```$", "", text)
         return text.strip()
 
+    @staticmethod
+    def _extract_json_candidate(text: str) -> str:
+        cleaned = GeminiService._clean_json_text(text)
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return cleaned[start : end + 1]
+        return cleaned
+
     async def generate_text(self, prompt: str) -> str:
         response = self._get_text_model().generate_content(prompt)
         return self._extract_text(response)
 
     async def generate_json(self, prompt: str) -> dict[str, Any]:
         response = self._get_json_model().generate_content(prompt)
-        text = self._clean_json_text(self._extract_text(response))
+        text = self._extract_json_candidate(self._extract_text(response))
         try:
             return safe_parse_json(text)
         except ValueError as exc:
-            raise ValueError("Gemini returned invalid JSON") from exc
+            repair_prompt = (
+                "Return only valid JSON for the request below. "
+                "Do not include markdown, explanation, or extra text.\n\n"
+                f"{prompt}"
+            )
+            repair_response = self._get_text_model().generate_content(repair_prompt)
+            repaired_text = self._extract_json_candidate(self._extract_text(repair_response))
+            try:
+                return safe_parse_json(repaired_text)
+            except ValueError as repair_exc:
+                raise ValueError("Gemini returned invalid JSON") from repair_exc
 
 
 gemini = GeminiService()

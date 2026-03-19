@@ -1,11 +1,30 @@
-import { FeaturePlaceholder } from "@/components/layout/FeaturePlaceholder"
+import { redirect } from "next/navigation"
 
-export default function ProfilePage() {
+import { ProfileEditor } from "@/components/profile/ProfileEditor"
+import { createClient } from "@/lib/supabase/server"
+
+export default async function ProfilePage() {
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect("/login")
+  }
+
+  const [profileResponse, onboardingResponse] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+    supabase.from("user_onboarding").select("*").eq("user_id", user.id).maybeSingle(),
+  ])
+
   return (
-    <FeaturePlaceholder
-      title="Khung hồ sơ đã sẵn sàng"
-      description="Trang này đang là placeholder trong giai đoạn MVP. Nếu cần, phần hồ sơ chi tiết có thể được mở rộng sau khi flow onboarding ổn định."
-      stepLabel="Frontend setup"
+    <ProfileEditor
+      userId={user.id}
+      email={profileResponse.data?.email ?? user.email}
+      createdAt={profileResponse.data?.created_at ?? null}
+      initialFullName={profileResponse.data?.full_name ?? user.user_metadata?.full_name ?? null}
+      initialOnboarding={onboardingResponse.data}
     />
   )
 }

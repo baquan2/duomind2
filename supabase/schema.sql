@@ -9,6 +9,7 @@ CREATE TABLE public.profiles (
     full_name     TEXT,
     avatar_url    TEXT,
     is_onboarded  BOOLEAN DEFAULT FALSE,
+    has_seen_intro_tour BOOLEAN DEFAULT FALSE,
     created_at    TIMESTAMPTZ DEFAULT NOW(),
     updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -163,7 +164,81 @@ CREATE TABLE public.knowledge_analytics (
 
 CREATE INDEX idx_analytics_user ON public.knowledge_analytics(user_id);
 
--- Block 7: RLS
+-- Block 7: mentor
+CREATE TABLE public.mentor_threads (
+    id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id         UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    title           TEXT NOT NULL,
+    status          TEXT DEFAULT 'active' CHECK (status IN ('active','archived')),
+    last_message_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TRIGGER mentor_threads_updated_at
+    BEFORE UPDATE ON public.mentor_threads
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE INDEX idx_mentor_threads_user ON public.mentor_threads(user_id);
+CREATE INDEX idx_mentor_threads_last_message ON public.mentor_threads(last_message_at DESC);
+
+CREATE TABLE public.mentor_messages (
+    id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    thread_id     UUID REFERENCES public.mentor_threads(id) ON DELETE CASCADE NOT NULL,
+    user_id       UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    role          TEXT CHECK (role IN ('user','assistant','system')) NOT NULL,
+    intent        TEXT,
+    content       TEXT NOT NULL,
+    response_data JSONB,
+    sources       JSONB DEFAULT '[]',
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_mentor_messages_thread ON public.mentor_messages(thread_id, created_at);
+
+CREATE TABLE public.mentor_memory (
+    id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id          UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    memory_type      TEXT CHECK (
+        memory_type IN ('goal','constraint','skill','career_interest','preference','fact','summary')
+    ) NOT NULL,
+    memory_key       TEXT NOT NULL,
+    memory_value     JSONB NOT NULL,
+    confidence       NUMERIC(3,2) DEFAULT 0.80,
+    source_thread_id UUID REFERENCES public.mentor_threads(id) ON DELETE SET NULL,
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (user_id, memory_type, memory_key)
+);
+
+CREATE TRIGGER mentor_memory_updated_at
+    BEFORE UPDATE ON public.mentor_memory
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE INDEX idx_mentor_memory_user ON public.mentor_memory(user_id);
+CREATE INDEX idx_mentor_memory_key ON public.mentor_memory(user_id, memory_key);
+
+CREATE TABLE public.job_market_signals (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    industry     TEXT,
+    role_name    TEXT NOT NULL,
+    seniority    TEXT,
+    location     TEXT,
+    skills       TEXT[] DEFAULT '{}',
+    tools        TEXT[] DEFAULT '{}',
+    soft_skills  TEXT[] DEFAULT '{}',
+    salary_min   NUMERIC,
+    salary_max   NUMERIC,
+    demand_score NUMERIC(5,2),
+    source_name  TEXT,
+    source_url   TEXT,
+    captured_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_market_role ON public.job_market_signals(role_name);
+CREATE INDEX idx_market_industry ON public.job_market_signals(industry);
+CREATE INDEX idx_market_skills ON public.job_market_signals USING gin(skills);
+
+-- Block 8: RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_onboarding ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.learning_sessions ENABLE ROW LEVEL SECURITY;
@@ -171,6 +246,10 @@ ALTER TABLE public.quiz_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.open_question_responses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.knowledge_analytics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_memory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_market_signals ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "profiles_select_own"
     ON public.profiles FOR SELECT
@@ -204,6 +283,18 @@ CREATE POLICY "analytics_own"
     ON public.knowledge_analytics FOR ALL
     USING (auth.uid() = user_id);
 
--- Block 8 from docs is a dashboard configuration step, not SQL:
+CREATE POLICY "mentor_threads_own"
+    ON public.mentor_threads FOR ALL
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "mentor_messages_own"
+    ON public.mentor_messages FOR ALL
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "mentor_memory_own"
+    ON public.mentor_memory FOR ALL
+    USING (auth.uid() = user_id);
+
+-- Block 9 from docs is a dashboard configuration step, not SQL:
 -- Authentication -> Providers -> Email enable
 -- For local dev, disable confirm email if needed.

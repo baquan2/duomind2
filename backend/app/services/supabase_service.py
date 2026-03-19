@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 from supabase import Client
@@ -212,3 +213,160 @@ class SupabaseService:
         payload = {"user_id": user_id, **data}
         result = self.db.table("knowledge_analytics").insert(payload).execute()
         return self._first(result.data)
+
+    def get_latest_analytics_report(self, user_id: str) -> dict[str, Any] | None:
+        result = (
+            self.db.table("knowledge_analytics")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("generated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return self._first(result.data)
+
+    def create_mentor_thread(self, user_id: str, title: str) -> dict[str, Any] | None:
+        payload = {"user_id": user_id, "title": title}
+        result = self.db.table("mentor_threads").insert(payload).execute()
+        return self._first(result.data)
+
+    def get_mentor_threads(self, user_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        result = (
+            self.db.table("mentor_threads")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("last_message_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+
+    def get_mentor_thread(self, thread_id: str, user_id: str) -> dict[str, Any] | None:
+        try:
+            result = (
+                self.db.table("mentor_threads")
+                .select("*")
+                .eq("id", thread_id)
+                .eq("user_id", user_id)
+                .single()
+                .execute()
+            )
+            return result.data
+        except Exception:
+            return None
+
+    def update_mentor_thread(
+        self,
+        thread_id: str,
+        user_id: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        result = (
+            self.db.table("mentor_threads")
+            .update(data)
+            .eq("id", thread_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return self._first(result.data)
+
+    def create_mentor_message(
+        self,
+        thread_id: str,
+        user_id: str,
+        role: str,
+        content: str,
+        intent: str | None = None,
+        response_data: dict[str, Any] | None = None,
+        sources: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
+        payload = {
+            "thread_id": thread_id,
+            "user_id": user_id,
+            "role": role,
+            "intent": intent,
+            "content": content,
+            "response_data": response_data,
+            "sources": sources or [],
+        }
+        result = self.db.table("mentor_messages").insert(payload).execute()
+        self.update_mentor_thread(
+            thread_id,
+            user_id,
+            {"last_message_at": datetime.now(timezone.utc).isoformat()},
+        )
+        return self._first(result.data)
+
+    def get_mentor_messages(
+        self,
+        thread_id: str,
+        user_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        result = (
+            self.db.table("mentor_messages")
+            .select("*")
+            .eq("thread_id", thread_id)
+            .eq("user_id", user_id)
+            .order("created_at")
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+
+    def upsert_mentor_memory(
+        self,
+        user_id: str,
+        memory_type: str,
+        memory_key: str,
+        memory_value: Any,
+        confidence: float = 0.8,
+        source_thread_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        payload = {
+            "user_id": user_id,
+            "memory_type": memory_type,
+            "memory_key": memory_key,
+            "memory_value": memory_value,
+            "confidence": confidence,
+            "source_thread_id": source_thread_id,
+        }
+        result = (
+            self.db.table("mentor_memory")
+            .upsert(payload, on_conflict="user_id,memory_type,memory_key")
+            .execute()
+        )
+        return self._first(result.data)
+
+    def get_mentor_memory(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        result = (
+            self.db.table("mentor_memory")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("updated_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+
+    def get_market_signals(
+        self,
+        industry: str | None = None,
+        roles: list[str] | None = None,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        try:
+            query = (
+                self.db.table("job_market_signals")
+                .select("*")
+                .order("demand_score", desc=True)
+                .limit(limit)
+            )
+            if industry:
+                query = query.eq("industry", industry)
+            if roles:
+                query = query.in_("role_name", roles)
+            result = query.execute()
+            return result.data or []
+        except Exception:
+            return []

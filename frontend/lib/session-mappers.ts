@@ -1,7 +1,7 @@
 import type {
   AnalyzeResult,
   ExploreResult,
-  InfographicData,
+  KnowledgeDetailData,
   LearningSession,
 } from "@/types"
 import {
@@ -9,8 +9,6 @@ import {
   extractSourceLabel,
   stripSourceLabel,
 } from "@/lib/analysis-source"
-
-const FALLBACK_THEME = "#0f766e"
 
 export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResult {
   const rawContent = stripSourceLabel(session.user_input)
@@ -38,28 +36,61 @@ export function mapSessionToExploreResult(session: LearningSession): ExploreResu
     title: session.title,
     summary: session.summary ?? "",
     key_points: session.key_points ?? [],
-    infographic_data:
-      session.infographic_data ?? buildFallbackInfographic(session),
+    knowledge_detail_data:
+      session.infographic_data ?? buildFallbackKnowledgeDetail(session),
     topic_tags: session.topic_tags ?? [],
     mindmap_data: session.mindmap_data ?? buildFallbackMindMap(session),
   }
 }
 
-function buildFallbackInfographic(session: LearningSession): InfographicData {
-  const sections =
-    session.key_points?.map((point, index) => ({
-      icon: `${index + 1}`,
-      heading: `Key point ${index + 1}`,
-      content: point,
-    })) ?? []
+function buildFallbackKnowledgeDetail(session: LearningSession): KnowledgeDetailData {
+  const keyPoints = session.key_points ?? []
+  const title = session.title
+  const summary = session.summary ?? ""
 
   return {
-    type: "list",
-    theme_color: FALLBACK_THEME,
-    title: session.title,
-    subtitle: session.summary ?? "",
-    sections,
-    footer_note: "Infographic fallback generated from stored session data.",
+    title,
+    summary,
+    detailed_sections: {
+      core_concept: {
+        title: "Khái niệm cốt lõi",
+        content: keyPoints[0] ?? summary ?? `Giới thiệu nhanh về ${title}.`,
+      },
+      mechanism: {
+        title: "Bản chất / cơ chế hoạt động",
+        content:
+          keyPoints[1] ?? "Giải thích cơ chế ở mức nền tảng để dễ nắm bản chất.",
+      },
+      components_and_relationships: {
+        title: "Các thành phần chính và quan hệ giữa chúng",
+        content:
+          keyPoints[2] ?? "Chỉ ra các thành phần quan trọng và cách chúng liên kết với nhau.",
+      },
+      persona_based_example: {
+        title: "Ví dụ trực quan theo đúng persona",
+        content:
+          keyPoints[3] ?? "Dùng ví dụ gần bối cảnh người học để tăng khả năng tiếp thu.",
+      },
+      real_world_applications: {
+        title: "Ứng dụng thực tế",
+        content:
+          keyPoints[4] ?? "Tập trung vào nơi kiến thức này được dùng trong thực tế.",
+      },
+      common_misconceptions: {
+        title: "Nhầm lẫn phổ biến",
+        content: "Nhắc lại các hiểu sai thường gặp để tránh học lệch từ đầu.",
+      },
+      next_step_self_study: {
+        title: "Cách tự học tiếp trong 1 buổi ngắn",
+        content: "Ôn lại phần cốt lõi, ghi chú ý chính và làm một ví dụ ngắn ngay sau khi đọc.",
+      },
+    },
+    teaching_adaptation: {
+      focus_priority: "ưu tiên phần cốt lõi trước",
+      tone: "rõ ràng, gần gũi, thiên về sư phạm",
+      depth_control: "đi từ nền tảng đến ứng dụng",
+      example_strategy: "dùng ví dụ trực quan và gần thực tế",
+    },
   }
 }
 

@@ -3,7 +3,6 @@ import {
   HeadingLevel,
   Packer,
   Paragraph,
-  TextRun,
 } from "docx"
 
 import type { SessionDetailResponse } from "@/types"
@@ -50,6 +49,22 @@ function createHeading(
   })
 }
 
+function getKnowledgeDetailEntries(data: SessionDetailResponse["session"]["infographic_data"]) {
+  if (!data?.detailed_sections) {
+    return []
+  }
+
+  return [
+    data.detailed_sections.core_concept,
+    data.detailed_sections.mechanism,
+    data.detailed_sections.components_and_relationships,
+    data.detailed_sections.persona_based_example,
+    data.detailed_sections.real_world_applications,
+    data.detailed_sections.common_misconceptions,
+    data.detailed_sections.next_step_self_study,
+  ].filter((section) => section?.title && section?.content)
+}
+
 export async function exportSessionAsWord(data: SessionDetailResponse) {
   const { session, quiz_questions } = data
   const children: Paragraph[] = [
@@ -62,9 +77,7 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
       `Loại phiên: ${session.session_type === "analyze" ? "Phân tích" : "Khám phá"}`
     ),
     createBullet(`Thời gian: ${new Date(session.created_at).toLocaleString("vi-VN")}`),
-    createBullet(
-      `Chủ đề: ${(session.topic_tags || []).join(", ") || "Không có"}`
-    ),
+    createBullet(`Chủ đề: ${(session.topic_tags || []).join(", ") || "Không có"}`),
   ]
 
   if (session.summary) {
@@ -94,10 +107,12 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
     })
   }
 
-  if (session.infographic_data?.sections?.length) {
-    children.push(createHeading("Infographic", HeadingLevel.HEADING_1))
-    session.infographic_data.sections.forEach((section) => {
-      children.push(createBullet(`${section.heading}: ${section.content}`))
+  const knowledgeDetailEntries = getKnowledgeDetailEntries(session.infographic_data)
+  if (knowledgeDetailEntries.length) {
+    children.push(createHeading("Chi tiết kiến thức", HeadingLevel.HEADING_1))
+    knowledgeDetailEntries.forEach((section) => {
+      children.push(createBullet(section.title))
+      children.push(createBullet(section.content, 1))
     })
   }
 
@@ -167,10 +182,12 @@ export function exportSessionAsMarkdown(data: SessionDetailResponse) {
     lines.push("")
   }
 
-  if (session.infographic_data?.sections?.length) {
-    lines.push("## Infographic", "")
-    session.infographic_data.sections.forEach((section, index) => {
-      lines.push(`${index + 1}. ${section.heading}: ${section.content}`)
+  const knowledgeDetailEntries = getKnowledgeDetailEntries(session.infographic_data)
+  if (knowledgeDetailEntries.length) {
+    lines.push("## Chi tiết kiến thức", "")
+    knowledgeDetailEntries.forEach((section, index) => {
+      lines.push(`${index + 1}. ${section.title}`)
+      lines.push(`   - ${section.content}`)
     })
     lines.push("")
   }

@@ -1,7 +1,6 @@
 "use client"
 
 import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
 import type { OnboardingData } from "@/types"
 import { cn } from "@/lib/utils"
 
@@ -32,11 +31,10 @@ export function Step3Goals({ data, onChange }: Step3GoalsProps) {
           Bước 3
         </div>
         <div>
-          <h2 className="font-display text-2xl font-semibold">
-            Mục tiêu và chủ đề bạn quan tâm
-          </h2>
+          <h2 className="font-display text-2xl font-semibold">Mục tiêu và chủ đề bạn quan tâm</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Chọn nhiều mục nếu cần. DUO MIND sẽ dùng thông tin này để ưu tiên đề xuất.
+            Chọn nhiều mục nếu cần. DUO MIND sẽ dùng thông tin này để ưu tiên đề xuất và
+            làm giàu lộ trình học.
           </p>
         </div>
       </div>
@@ -86,24 +84,6 @@ export function Step3Goals({ data, onChange }: Step3GoalsProps) {
               </button>
             )
           })}
-        </div>
-      </div>
-
-      <div className="space-y-4 rounded-3xl border border-border bg-card/70 p-5">
-        <Label className="text-base font-medium">
-          Thời gian học mỗi ngày:{" "}
-          <span className="text-primary">{data.daily_study_minutes ?? 30} phút</span>
-        </Label>
-        <Slider
-          value={[data.daily_study_minutes ?? 30]}
-          onValueChange={([value]) => onChange({ daily_study_minutes: value })}
-          min={10}
-          max={120}
-          step={10}
-        />
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>10 phút</span>
-          <span>120 phút</span>
         </div>
       </div>
     </div>

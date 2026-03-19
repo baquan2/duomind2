@@ -5,6 +5,7 @@ from app.dependencies import get_current_user, get_supabase
 from app.models.user import OnboardingData, OnboardingResponse
 from app.services.gemini_service import gemini
 from app.services.supabase_service import SupabaseService
+from app.utils.helpers import build_learner_profile
 from app.utils.prompts import ONBOARDING_CLASSIFY_PROMPT
 
 
@@ -12,14 +13,19 @@ router = APIRouter()
 
 
 def _build_onboarding_prompt(data: OnboardingData) -> str:
-    payload = data.model_dump(mode="json")
-    return ONBOARDING_CLASSIFY_PROMPT.format(**payload)
+    learner_profile = build_learner_profile(data.model_dump(mode="json"))
+    return ONBOARDING_CLASSIFY_PROMPT.format(learner_profile=learner_profile)
 
 
 def _normalize_ai_payload(result: dict) -> tuple[str, str, list[str]]:
-    persona = str(result.get("persona") or "general_learner").strip()
+    persona = str(
+        result.get("persona_name")
+        or result.get("persona")
+        or "general_learner"
+    ).strip()
     description = str(
-        result.get("description") or "Nguoi hoc dang trong giai doan xay dung nen tang."
+        result.get("description")
+        or "Người học đang ở giai đoạn xây nền tảng và cần cách dạy rõ ràng, thực dụng."
     ).strip()
 
     topics = result.get("recommended_topics") or []
@@ -27,7 +33,13 @@ def _normalize_ai_payload(result: dict) -> tuple[str, str, list[str]]:
         topics = []
     normalized_topics = [str(topic).strip() for topic in topics if str(topic).strip()]
     if not normalized_topics:
-        normalized_topics = ["Tu duy hoc tap", "Tom tat kien thuc", "Tu danh gia"]
+        normalized_topics = [
+            "Tư duy học tập",
+            "Tóm tắt kiến thức",
+            "Tự đánh giá",
+            "Ví dụ thực tế",
+            "Ôn tập ngắn hạn",
+        ]
 
     return persona, description, normalized_topics[:5]
 
@@ -35,26 +47,32 @@ def _normalize_ai_payload(result: dict) -> tuple[str, str, list[str]]:
 def _fallback_onboarding_payload(data: OnboardingData) -> tuple[str, str, list[str]]:
     if data.status == "student":
         if data.education_level in {"university", "postgrad"}:
-            persona = "university_student"
+            persona = "Sinh viên định hướng chuyên sâu"
         elif data.education_level == "high_school":
-            persona = "high_school_student"
+            persona = "Học sinh cần nền tảng rõ ràng"
         else:
-            persona = "student_learner"
+            persona = "Người học theo lộ trình học thuật"
     elif data.status == "working":
-        persona = "working_professional"
+        persona = "Người đi làm học theo ứng dụng"
     elif data.status == "both":
-        persona = "working_student"
+        persona = "Người học vừa học vừa làm"
     else:
-        persona = "self_directed_learner"
+        persona = "Người học tự định hướng"
 
     recommended_topics = data.topics_of_interest[:5]
     if not recommended_topics:
-        recommended_topics = ["technology", "science", "business"]
+        recommended_topics = [
+            "Tư duy hệ thống",
+            "Khái niệm cốt lõi",
+            "Ví dụ ứng dụng",
+            "Luyện tập ngắn",
+            "Ôn tập có cấu trúc",
+        ]
 
-    goals = ", ".join(data.learning_goals[:2]) or "mo rong kien thuc"
+    goals = ", ".join(data.learning_goals[:2]) or "mở rộng kiến thức"
     description = (
-        "Gemini tam thoi khong phan tich duoc, nen he thong da dung co che fallback "
-        f"dua tren profile co ban. DUO MIND se uu tien noi dung phu hop voi muc tieu {goals}."
+        "Gemini tạm thời chưa phân tích được đầy đủ, nên hệ thống đang dùng hồ sơ cơ bản "
+        f"để cá nhân hóa trước. DUO MIND sẽ ưu tiên nội dung phù hợp với mục tiêu {goals}."
     )
 
     return persona, description, recommended_topics
@@ -80,6 +98,7 @@ async def submit_onboarding(
     except Exception as exc:
         print(f"[onboarding] Gemini classification failed: {exc}")
         ai_persona, ai_description, ai_topics = _fallback_onboarding_payload(data)
+
     payload = {
         **data.model_dump(mode="json"),
         "ai_persona": ai_persona,

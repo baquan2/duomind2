@@ -5,6 +5,7 @@ const protectedRoutes = [
   "/dashboard",
   "/analyze",
   "/explore",
+  "/mentor",
   "/history",
   "/onboarding",
   "/profile",

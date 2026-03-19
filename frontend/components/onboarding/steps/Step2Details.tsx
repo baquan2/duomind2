@@ -31,8 +31,8 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
         <div>
           <h2 className="font-display text-2xl font-semibold">Thêm thông tin chi tiết</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Độ khó, ví dụ và cách diễn giải sẽ được điều chỉnh dựa trên nền tảng của
-            bạn.
+            Độ khó, ví dụ và cách diễn giải sẽ được điều chỉnh dựa trên nền tảng hiện tại
+            của bạn.
           </p>
         </div>
       </div>
@@ -98,7 +98,7 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
           <div>
             <p className="text-sm font-medium text-emerald-800">Thông tin công việc</p>
             <p className="mt-1 text-sm text-emerald-700/80">
-              AI sẽ ưu tiên tình huống và case study gần với bối cảnh nghề nghiệp.
+              AI sẽ ưu tiên tình huống và case study gần với bối cảnh nghề nghiệp của bạn.
             </p>
           </div>
 

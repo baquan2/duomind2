@@ -38,6 +38,6 @@ class ExploreResult(BaseModel):
     title: str
     summary: str
     key_points: list[str] = Field(default_factory=list)
-    infographic_data: dict[str, Any] = Field(default_factory=dict)
+    knowledge_detail_data: dict[str, Any] = Field(default_factory=dict)
     topic_tags: list[str] = Field(default_factory=list)
     mindmap_data: dict[str, Any] = Field(default_factory=dict)

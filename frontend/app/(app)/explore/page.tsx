@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Compass, Sparkles, Wand2 } from "lucide-react"
+import { BookOpenText, Compass, Sparkles, Wand2 } from "lucide-react"
 import { useState } from "react"
 
 import { ExploreResultView } from "@/components/explore/ExploreResultView"
@@ -23,16 +23,16 @@ const EXAMPLE_PROMPTS = [
 
 const OUTPUT_GUIDE = [
   {
-    title: "Tóm tắt chủ đề",
+    title: "Tổng quan chủ đề",
     description: "AI gom ý chính để bạn nắm được bức tranh tổng thể trước.",
   },
   {
-    title: "Infographic dễ quét",
-    description: "Nội dung được chia thành các khối nhỏ, đọc nhanh và rõ hơn.",
+    title: "Chi tiết kiến thức",
+    description: "Nội dung được giải thích sâu theo logic học tập và đúng persona của bạn.",
   },
   {
-    title: "Mind map tức thì",
-    description: "Sơ đồ khái niệm được dựng ngay sau khi có kết quả, không chờ thêm.",
+    title: "Mind map toàn cảnh",
+    description: "Sơ đồ khái niệm được dựng ngay sau khi có kết quả để bạn học có cấu trúc hơn.",
   },
 ]
 
@@ -56,8 +56,8 @@ export default function ExplorePage() {
       const response = await exploreTopicApi(query)
       setResult(response)
       setPrompt(query)
-    } catch (error) {
-      setError(getApiErrorMessage(error, "Không thể khám phá chủ đề lúc này. Vui lòng thử lại."))
+    } catch (apiError) {
+      setError(getApiErrorMessage(apiError, "Không thể khám phá chủ đề lúc này. Vui lòng thử lại."))
     } finally {
       setLoading(false)
     }
@@ -76,8 +76,8 @@ export default function ExplorePage() {
               Khám phá bất kỳ chủ đề nào bằng prompt tự nhiên
             </h1>
             <p className="text-sm leading-7 text-foreground/75 sm:text-base">
-              DUO MIND sẽ đọc prompt của bạn, tổng hợp chủ đề bằng AI, rồi sinh ra phần
-              tóm tắt, infographic và mind map trong cùng một phiên học.
+              DUO MIND sẽ đọc prompt của bạn, giải thích chủ đề theo persona, trình bày phần
+              tổng quan, chi tiết kiến thức và mind map trong cùng một phiên học.
             </p>
           </div>
         </div>
@@ -160,8 +160,8 @@ export default function ExplorePage() {
               </div>
             ))}
             <div className="rounded-2xl border border-dashed border-primary/25 bg-primary/5 p-4 text-sm leading-6 text-foreground/80">
-              Explore theo docs sẽ sinh <span className="font-medium">tóm tắt + infographic + mind map</span>.
-              Quiz vẫn được tạo ở bước ôn tập sau khi kết quả chính đã sẵn sàng.
+              Explore giờ sẽ sinh <span className="font-medium">tổng quan + chi tiết kiến thức + mind map</span>.
+              Bạn cũng có thể tải file Word ngay trong màn kết quả.
             </div>
           </CardContent>
         </Card>
@@ -183,7 +183,7 @@ export default function ExplorePage() {
               <h2 className="font-display text-2xl font-semibold">Chưa có chủ đề nào được mở ra</h2>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                 Chọn một prompt mẫu hoặc nhập câu hỏi riêng của bạn. Kết quả sẽ được chia
-                theo từng phần rõ ràng để dễ đọc và dễ quay lại.
+                theo từng phần rõ ràng để dễ đọc, dễ hiểu và dễ quay lại.
               </p>
             </div>
           </CardContent>
@@ -198,7 +198,7 @@ export default function ExplorePage() {
         >
           {[
             "Đọc và hiểu prompt",
-            "Sinh infographic từ nội dung chính",
+            "Giải thích sâu theo persona",
             "Dựng mind map cho cùng phiên học",
           ].map((label, index) => (
             <Card key={label} className="border border-border/70 bg-card/92">

@@ -88,8 +88,16 @@
   h2,
   h3,
   h4 {
-    font-family: var(--font-space-grotesk), sans-serif;
-    letter-spacing: -0.03em;
+    font-family: var(--font-nunito), var(--font-be-vietnam-pro), sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  body,
+  button,
+  input,
+  textarea,
+  select {
+    font-family: var(--font-be-vietnam-pro), sans-serif;
   }
 }
 

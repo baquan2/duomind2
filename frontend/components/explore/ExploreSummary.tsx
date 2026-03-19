@@ -14,7 +14,8 @@ export function ExploreSummary({
   keyPoints,
   topicTags: _topicTags,
 }: ExploreSummaryProps) {
-  const overviewBullets = extractSummaryBullets(summary, keyPoints, 6)
+  const overviewBullets = extractSummaryBullets(summary, [], 5)
+  const theoryBullets = keyPoints.slice(0, 5)
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[1fr_1fr]">
@@ -46,18 +47,22 @@ export function ExploreSummary({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <Lightbulb className="size-5 text-primary" />
-            Người học cần nhớ
+            Tóm tắt lý thuyết cốt lõi
           </CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-3">
-            {keyPoints.map((point, index) => (
+            {theoryBullets.map((point, index) => (
               <li
                 key={`${point}-${index}`}
                 className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm leading-7 text-foreground/85"
               >
-                <span className="mr-2 font-semibold text-primary">{index + 1}.</span>
-                {point}
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  <span>{point}</span>
+                </div>
               </li>
             ))}
           </ul>

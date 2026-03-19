@@ -12,7 +12,7 @@ from app.utils.fallbacks import build_analyze_fallback, build_basic_mindmap
 from app.utils.helpers import (
     build_input_preview,
     build_stored_user_input,
-    get_user_context,
+    convert_mind_map_tree_to_flow,
     normalize_topic_tags,
     truncate_content,
 )
@@ -57,8 +57,6 @@ async def _run_analysis(
         avatar_url=current_user.get("avatar_url"),
     )
 
-    onboarding = svc.get_onboarding(current_user["id"])
-    prompt_context = get_user_context(onboarding)
     truncated_content = truncate_content(content)
 
     try:
@@ -66,19 +64,23 @@ async def _run_analysis(
             ANALYZE_CONTENT_PROMPT.format(
                 content=truncated_content,
                 language=language,
-                **prompt_context,
             )
         )
     except Exception as exc:
         print(f"[analyze] Main analysis failed, using fallback: {exc}")
         ai_result = build_analyze_fallback(truncated_content)
 
-    title = str(ai_result.get("title") or "Phan tich noi dung").strip()
+    title = str(ai_result.get("title") or "Phân tích nội dung").strip()
 
     try:
-        mindmap_data = await gemini.generate_json(
-            MINDMAP_GENERATE_PROMPT.format(content=truncated_content, title=title)
+        raw_mindmap_data = await gemini.generate_json(
+            MINDMAP_GENERATE_PROMPT.format(
+                topic=title,
+            )
         )
+        mindmap_data = convert_mind_map_tree_to_flow(raw_mindmap_data)
+        if not mindmap_data.get("nodes"):
+            raise ValueError("Mind map tree conversion returned no nodes")
     except Exception as exc:
         print(f"[analyze] Mind map generation failed, using fallback: {exc}")
         mindmap_data = build_basic_mindmap(
@@ -113,7 +115,7 @@ async def _run_analysis(
     ]
     corrections = _normalize_corrections(ai_result.get("corrections"))
     topic_tags = normalize_topic_tags(ai_result.get("topic_tags"), title or content)
-    effective_source_label = source_label or "Noi dung nhap tay"
+    effective_source_label = source_label or "Nội dung nhập tay"
 
     session = svc.create_session(
         current_user["id"],
@@ -135,7 +137,7 @@ async def _run_analysis(
     if not session or not session.get("id"):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Khong the luu phien phan tich.",
+            detail="Không thể lưu phiên phân tích.",
         )
 
     return AnalyzeResult(

@@ -1,19 +1,21 @@
 import type { Metadata } from "next"
-import { Outfit, Space_Grotesk } from "next/font/google"
+import { Be_Vietnam_Pro, Nunito } from "next/font/google"
 import type { ReactNode } from "react"
 
 import { Providers } from "@/components/providers/Providers"
 
 import "./globals.css"
 
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
+const beVietnamPro = Be_Vietnam_Pro({
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-be-vietnam-pro",
+  weight: ["400", "500", "600", "700"],
 })
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space-grotesk",
+const nunito = Nunito({
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-nunito",
+  weight: ["600", "700", "800"],
 })
 
 export const metadata: Metadata = {
@@ -25,7 +27,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="vi" suppressHydrationWarning>
       <body
-        className={`${outfit.variable} ${spaceGrotesk.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
+        className={`${beVietnamPro.variable} ${nunito.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
       >
         <Providers>{children}</Providers>
       </body>
