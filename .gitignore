@@ -1,0 +1,33 @@
+# Local environment files
+.env
+.env.local
+
+# Python
+backend/.env
+backend/venv/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/**/__pycache__/
+backend/**/*.pyc
+
+# Node / Next.js
+frontend/.env.local
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/.vercel/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Local tools / caches
+.venv/
+.appdata/
+.codex/
+.localappdata/
+.npm-cache/

@@ -1,0 +1,100 @@
+@import "@xyflow/react/dist/style.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 42 60% 98%;
+  --foreground: 204 34% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 204 34% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 204 34% 16%;
+  --primary: 171 57% 35%;
+  --primary-foreground: 42 60% 98%;
+  --secondary: 153 24% 92%;
+  --secondary-foreground: 169 45% 24%;
+  --muted: 150 16% 93%;
+  --muted-foreground: 208 16% 38%;
+  --accent: 37 100% 92%;
+  --accent-foreground: 24 61% 22%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 156 16% 84%;
+  --input: 156 16% 84%;
+  --ring: 171 57% 35%;
+  --sidebar-background: 171 45% 17%;
+  --sidebar-foreground: 42 60% 96%;
+  --sidebar-primary: 34 100% 64%;
+  --sidebar-primary-foreground: 24 54% 17%;
+  --sidebar-accent: 166 34% 23%;
+  --sidebar-accent-foreground: 42 60% 98%;
+  --sidebar-border: 166 26% 28%;
+  --sidebar-ring: 34 100% 64%;
+  --radius: 1rem;
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: calc(var(--radius) + 4px);
+}
+
+.dark {
+  --background: 180 12% 10%;
+  --foreground: 45 33% 95%;
+  --card: 180 10% 13%;
+  --card-foreground: 45 33% 95%;
+  --popover: 180 10% 13%;
+  --popover-foreground: 45 33% 95%;
+  --primary: 34 100% 65%;
+  --primary-foreground: 170 38% 14%;
+  --secondary: 171 14% 20%;
+  --secondary-foreground: 42 60% 96%;
+  --muted: 171 12% 19%;
+  --muted-foreground: 152 10% 72%;
+  --accent: 171 14% 20%;
+  --accent-foreground: 42 60% 96%;
+  --destructive: 0 72% 55%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 171 14% 22%;
+  --input: 171 14% 22%;
+  --ring: 34 100% 65%;
+  --sidebar-background: 171 34% 12%;
+  --sidebar-foreground: 45 33% 95%;
+  --sidebar-primary: 34 100% 65%;
+  --sidebar-primary-foreground: 171 38% 14%;
+  --sidebar-accent: 171 18% 19%;
+  --sidebar-accent-foreground: 45 33% 95%;
+  --sidebar-border: 171 14% 22%;
+  --sidebar-ring: 34 100% 65%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at top, hsl(var(--accent) / 0.55), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--secondary) / 0.28));
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-space-grotesk), sans-serif;
+    letter-spacing: -0.03em;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
