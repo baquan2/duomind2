@@ -18,7 +18,6 @@ import {
   mapSessionToAnalyzeResult,
   mapSessionToExploreResult,
 } from "@/lib/session-mappers"
-import { compactTopicTags } from "@/lib/topic-tags"
 
 export default function HistoryDetailPage() {
   const params = useParams<{ id: string }>()
@@ -52,7 +51,6 @@ export default function HistoryDetailPage() {
   }
 
   const session = data.session
-  const compactTags = compactTopicTags(session.topic_tags, 4)
 
   return (
     <div className="space-y-6">
@@ -83,16 +81,6 @@ export default function HistoryDetailPage() {
                 <h1 className="font-display text-3xl font-semibold text-balance">
                   {session.title}
                 </h1>
-
-                {compactTags.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {compactTags.map((tag) => (
-                      <Badge key={tag} variant="outline" className="bg-background">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             </div>
 

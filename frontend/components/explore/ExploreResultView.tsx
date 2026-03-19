@@ -33,7 +33,6 @@ export function ExploreResultView({
   showHeader = true,
 }: ExploreResultViewProps) {
   const [downloading, setDownloading] = useState(false)
-  const coreTags = result.topic_tags.slice(0, 3)
   const knowledgeSectionCount = Object.keys(result.knowledge_detail_data?.detailed_sections ?? {}).length
 
   const scrollToSection = (sectionId: string) => {
@@ -77,15 +76,6 @@ export function ExploreResultView({
                   từ đâu.
                 </p>
               </div>
-              {coreTags.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {coreTags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="bg-background/85">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
               <Button
                 type="button"
                 variant="outline"

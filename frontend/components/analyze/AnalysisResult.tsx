@@ -16,7 +16,6 @@ import { MindMapViewer } from "@/components/mindmap/MindMapViewer"
 import { QuizContainer } from "@/components/quiz/QuizContainer"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { compactTopicTags } from "@/lib/topic-tags"
 import type { AnalyzeResult as AnalyzeResultData } from "@/types"
 
 interface AnalysisResultProps {
@@ -31,7 +30,6 @@ const quickLinks = [
 ]
 
 export function AnalysisResult({ result }: AnalysisResultProps) {
-  const compactTags = compactTopicTags(result.topic_tags, 4)
   const sourceLabel = result.source_label || "Nội dung nhập tay"
 
   return (
@@ -58,11 +56,6 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
                 <FileText className="mr-1 size-3.5" />
                 Nguồn: {sourceLabel}
               </Badge>
-              {compactTags.map((tag) => (
-                <Badge key={tag} variant="outline" className="bg-background/85">
-                  {tag}
-                </Badge>
-              ))}
             </div>
           </div>
 

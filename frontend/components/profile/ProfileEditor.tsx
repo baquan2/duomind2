@@ -514,18 +514,6 @@ export function ProfileEditor({
                   ) : null}
                 </div>
 
-                {recommendedTopics.length ? (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Chủ đề AI ưu tiên</div>
-                    <div className="flex flex-wrap gap-2">
-                      {recommendedTopics.map((topic) => (
-                        <Badge key={topic} variant="secondary">
-                          {topic}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           ) : null}

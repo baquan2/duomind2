@@ -8,7 +8,6 @@ import { useState } from "react"
 import { SessionActions } from "@/components/history/SessionActions"
 import { Badge } from "@/components/ui/badge"
 import { toggleBookmark } from "@/lib/api/history"
-import { compactTopicTags } from "@/lib/topic-tags"
 import type { LearningSession } from "@/types"
 import { cn } from "@/lib/utils"
 
@@ -24,7 +23,6 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
 
   const isAnalyze = session.session_type === "analyze"
   const Icon = isAnalyze ? ScanSearch : FlaskConical
-  const compactTags = compactTopicTags(session.topic_tags, 3)
 
   const handleBookmark = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -91,13 +89,8 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {compactTags.map((tag) => (
-                <Badge key={tag} variant="outline" className="bg-background">
-                  {tag}
-                </Badge>
-              ))}
-              <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <div className="flex items-center justify-end">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock3 className="size-3.5" />
                 {new Date(session.created_at).toLocaleDateString("vi-VN")}
               </span>

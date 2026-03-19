@@ -1,6 +1,5 @@
 import { Activity, Brain, GraduationCap, Target } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { KnowledgeReport as KnowledgeReportData } from "@/types"
 
@@ -55,32 +54,6 @@ export function KnowledgeReport({ report }: KnowledgeReportProps) {
             value={depthLabels[report.knowledge_depth] || report.knowledge_depth || "-"}
           />
         </div>
-
-        {report.strongest_topics?.length ? (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-emerald-700">Chủ đề bạn đang mạnh</p>
-            <div className="flex flex-wrap gap-2">
-              {report.strongest_topics.map((topic) => (
-                <Badge key={topic} className="border-0 bg-emerald-100 text-emerald-800">
-                  {topic}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {report.weakest_topics?.length ? (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-amber-700">Chủ đề nên ôn tiếp</p>
-            <div className="flex flex-wrap gap-2">
-              {report.weakest_topics.map((topic) => (
-                <Badge key={topic} className="border-0 bg-amber-100 text-amber-800">
-                  {topic}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         {report.ai_recommendations?.length ? (
           <div className="rounded-2xl border border-border/70 bg-card/90 p-4">

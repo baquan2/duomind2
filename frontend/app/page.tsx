@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation"
-
+import { HomeLanding } from "@/components/landing/HomeLanding"
 import { createClient } from "@/lib/supabase/server"
 
 export default async function HomePage() {
@@ -9,7 +8,15 @@ export default async function HomePage() {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect("/login")
+    return (
+      <HomeLanding
+        navHref="/login"
+        navLabel="Đăng nhập"
+        primaryHref="/signup"
+        primaryLabel="Bắt đầu ngay"
+        statusLabel="Phân tích, khám phá và học tập cùng AI trong một hệ duy nhất"
+      />
+    )
   }
 
   const { data: profile } = await supabase
@@ -18,9 +25,19 @@ export default async function HomePage() {
     .eq("id", user.id)
     .maybeSingle()
 
-  if (!profile?.is_onboarded) {
-    redirect("/onboarding")
-  }
+  const isOnboarded = Boolean(profile?.is_onboarded)
 
-  redirect("/dashboard")
+  return (
+    <HomeLanding
+      navHref={isOnboarded ? "/mentor" : "/onboarding"}
+      navLabel={isOnboarded ? "Mentor AI" : "Tiếp tục"}
+      primaryHref={isOnboarded ? "/dashboard" : "/onboarding"}
+      primaryLabel={isOnboarded ? "Mở dashboard" : "Hoàn tất onboarding"}
+      statusLabel={
+        isOnboarded
+          ? "Trở lại DUO MIND để tiếp tục học, khám phá và theo dõi tiến bộ"
+          : "Hoàn tất onboarding để DUO MIND cá nhân hóa lộ trình học cho bạn"
+      }
+    />
+  )
 }

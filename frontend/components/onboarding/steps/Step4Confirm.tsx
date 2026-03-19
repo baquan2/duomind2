@@ -150,19 +150,6 @@ export function Step4Confirm({
           </CardContent>
         </Card>
 
-        {aiResult.ai_recommended_topics.length ? (
-          <div className="space-y-3">
-            <p className="text-sm font-medium">Chủ đề đề xuất cho bạn</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {aiResult.ai_recommended_topics.map((topic) => (
-                <Badge key={topic} variant="outline" className="bg-card">
-                  {topic}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
         <p className="text-sm text-muted-foreground">Đang chuyển đến dashboard...</p>
       </motion.div>
     )
