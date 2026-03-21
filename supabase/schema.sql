@@ -1,9 +1,11 @@
 -- DUO MIND Supabase schema
 -- Source of truth: docs/02-database-schema.md
--- Run in Supabase SQL Editor in the documented order.
+-- Use this file for a fresh database bootstrap.
+-- Do not rerun the whole file on a database that already has tables.
+-- For partial recovery/repair, use dedicated files in /supabase (for example restore_profiles_table).
 
 -- Block 1: profiles
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
     id            UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
     email         TEXT,
     full_name     TEXT,
@@ -23,11 +25,18 @@ BEGIN
         NEW.email,
         NEW.raw_user_meta_data->>'full_name',
         NEW.raw_user_meta_data->>'avatar_url'
-    );
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET
+        email = EXCLUDED.email,
+        full_name = EXCLUDED.full_name,
+        avatar_url = EXCLUDED.avatar_url,
+        updated_at = NOW();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -40,6 +49,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS profiles_updated_at ON public.profiles;
 CREATE TRIGGER profiles_updated_at
     BEFORE UPDATE ON public.profiles
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
@@ -56,6 +66,11 @@ CREATE TABLE public.user_onboarding (
     industry         TEXT,
     job_title        TEXT,
     years_experience INTEGER CHECK (years_experience >= 0),
+    target_role      TEXT,
+    current_focus        TEXT,
+    current_challenges   TEXT,
+    desired_outcome      TEXT,
+    learning_constraints TEXT,
     learning_goals      TEXT[] DEFAULT '{}',
     topics_of_interest  TEXT[] DEFAULT '{}',
     learning_style      TEXT CHECK (learning_style IN ('visual','reading','practice','mixed')),
@@ -86,6 +101,7 @@ CREATE TABLE public.learning_sessions (
     corrections         JSONB DEFAULT '[]',
     infographic_data    JSONB,
     mindmap_data        JSONB,
+    sources             JSONB DEFAULT '[]',
     language    TEXT DEFAULT 'vi',
     duration_ms INTEGER,
     is_bookmarked BOOLEAN DEFAULT FALSE,

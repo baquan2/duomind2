@@ -9,6 +9,7 @@ const protectedRoutes = [
   "/history",
   "/onboarding",
   "/profile",
+  "/roadmap",
 ]
 
 const authRoutes = ["/login", "/signup"]
@@ -51,7 +52,7 @@ export async function middleware(request: NextRequest) {
 
   if (!user && isProtectedRoute) {
     const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("redirect", pathname)
+    loginUrl.searchParams.set("redirect", `${pathname}${request.nextUrl.search}`)
     return NextResponse.redirect(loginUrl)
   }
 

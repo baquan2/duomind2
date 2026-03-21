@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,8 +8,11 @@ from supabase import Client
 from app.dependencies import get_current_user, get_supabase
 from app.services.gemini_service import gemini
 from app.services.supabase_service import SupabaseService
-from app.utils.fallbacks import build_open_feedback_fallback, build_quiz_fallback
-from app.utils.helpers import get_user_context
+from app.utils.fallbacks import (
+    build_open_feedback_fallback,
+    build_targeted_quiz_fallback_v2,
+)
+from app.utils.helpers import extract_keywords_from_text, normalize_text, strip_accents
 from app.utils.prompts import (
     OPEN_ANSWER_FEEDBACK_PROMPT,
     OPEN_QUESTIONS_PROMPT,
@@ -17,6 +21,37 @@ from app.utils.prompts import (
 
 
 router = APIRouter()
+# Legacy phrases kept for traceability; clean normalized phrases below are the active ones.
+GENERIC_MCQ_PHRASES_LEGACY = (
+    "pháº§n 1",
+    "pháº§n 2",
+    "pháº§n 3",
+    "Ã½ nÃ o phÃ¹ há»£p nháº¥t",
+    "ná»™i dung chÃ­nh cá»§a pháº§n",
+    "chá»§ Ä‘á» trÃªn",
+)
+
+GENERIC_OPEN_PHRASES_LEGACY = (
+    "theo báº¡n",
+    "báº¡n sáº½ báº¯t Ä‘áº§u tá»« Ä‘Ã¢u",
+    "báº¡n nghÄ© gÃ¬",
+)
+
+
+GENERIC_MCQ_PHRASES = (
+    "phan 1",
+    "phan 2",
+    "phan 3",
+    "y nao phu hop nhat",
+    "noi dung chinh cua phan",
+    "chu de tren",
+)
+
+GENERIC_OPEN_PHRASES = (
+    "theo ban",
+    "ban se bat dau tu dau",
+    "ban nghi gi",
+)
 
 
 class QuizGenerateRequest(BaseModel):
@@ -103,6 +138,173 @@ def _normalize_question_for_storage(
     return base_payload
 
 
+def _build_quiz_material(session: dict[str, Any]) -> dict[str, Any]:
+    infographic_data = session.get("infographic_data")
+    detailed_sections = {}
+    if isinstance(infographic_data, dict):
+        detailed_sections = infographic_data.get("detailed_sections") or {}
+
+    normalized_sections: list[dict[str, str]] = []
+    if isinstance(detailed_sections, dict):
+        for key in (
+            "core_concept",
+            "mechanism",
+            "components_and_relationships",
+            "persona_based_example",
+            "real_world_applications",
+            "common_misconceptions",
+            "next_step_self_study",
+        ):
+            section = detailed_sections.get(key)
+            if not isinstance(section, dict):
+                continue
+            title = str(section.get("title") or "").strip()
+            content = str(section.get("content") or "").strip()
+            if not title and not content:
+                continue
+            normalized_sections.append(
+                {
+                    "title": title,
+                    "content": content[:320],
+                }
+            )
+
+    corrections_raw = session.get("corrections") or []
+    normalized_corrections: list[dict[str, str]] = []
+    if isinstance(corrections_raw, list):
+        for item in corrections_raw[:4]:
+            if not isinstance(item, dict):
+                continue
+            original = str(item.get("original") or "").strip()
+            correction = str(item.get("correction") or "").strip()
+            explanation = str(item.get("explanation") or "").strip()
+            if not original and not correction:
+                continue
+            normalized_corrections.append(
+                {
+                    "original": original,
+                    "correction": correction,
+                    "explanation": explanation[:220],
+                }
+            )
+
+    key_points_raw = session.get("key_points") or []
+    key_points = [
+        str(item).strip()
+        for item in key_points_raw[:6]
+        if str(item).strip()
+    ]
+
+    return {
+        "title": str(session.get("title") or "").strip(),
+        "summary": str(session.get("summary") or "").strip(),
+        "key_points": key_points,
+        "corrections": normalized_corrections,
+        "detailed_sections": normalized_sections,
+    }
+
+
+def _build_quiz_focus_keywords(quiz_material: dict[str, Any]) -> list[str]:
+    text_parts = [
+        str(quiz_material.get("title") or ""),
+        str(quiz_material.get("summary") or ""),
+        " ".join(str(item) for item in quiz_material.get("key_points") or []),
+        " ".join(
+            " ".join(str(section.get(key) or "") for key in ("title", "content"))
+            for section in quiz_material.get("detailed_sections") or []
+            if isinstance(section, dict)
+        ),
+        " ".join(
+            " ".join(str(item.get(key) or "") for key in ("original", "correction", "explanation"))
+            for item in quiz_material.get("corrections") or []
+            if isinstance(item, dict)
+        ),
+    ]
+    return extract_keywords_from_text(" ".join(text_parts), limit=10)
+
+
+def _keyword_overlap(text: str, keywords: list[str]) -> int:
+    lowered = strip_accents(normalize_text(text)).lower()
+    return sum(1 for keyword in keywords if keyword and keyword in lowered)
+
+
+def _mcq_question_is_weak(question: dict[str, Any], focus_keywords: list[str]) -> bool:
+    question_text = normalize_text(str(question.get("question_text") or ""))
+    lowered_question = strip_accents(question_text).lower()
+    options = question.get("options") or []
+    correct_answer = str(question.get("correct_answer") or "").strip()
+    explanation = normalize_text(str(question.get("explanation") or ""))
+
+    if len(question_text) < 18:
+        return True
+    if any(phrase in lowered_question for phrase in GENERIC_MCQ_PHRASES):
+        return True
+    if _keyword_overlap(question_text, focus_keywords) == 0:
+        return True
+    if not isinstance(options, list) or len(options) != 4:
+        return True
+    if correct_answer not in {"A", "B", "C", "D"}:
+        return True
+    option_texts = [normalize_text(str(option.get("text") or "")) for option in options if isinstance(option, dict)]
+    if len(option_texts) != 4 or len({text.lower() for text in option_texts if text}) != 4:
+        return True
+    if any(len(text) < 4 for text in option_texts):
+        return True
+    if len(explanation) < 18:
+        return True
+    return False
+
+
+def _open_question_is_weak(question: dict[str, Any], focus_keywords: list[str]) -> bool:
+    question_text = normalize_text(str(question.get("question_text") or ""))
+    lowered_question = strip_accents(question_text).lower()
+    hints = question.get("thinking_hints") or []
+    sample_points = question.get("sample_answer_points") or []
+
+    if len(question_text) < 18:
+        return True
+    if any(phrase in lowered_question for phrase in GENERIC_OPEN_PHRASES) and _keyword_overlap(question_text, focus_keywords) < 2:
+        return True
+    if _keyword_overlap(question_text, focus_keywords) == 0:
+        return True
+    if not isinstance(hints, list) or len([hint for hint in hints if normalize_text(str(hint))]) < 2:
+        return True
+    if not isinstance(sample_points, list) or len([point for point in sample_points if normalize_text(str(point))]) < 2:
+        return True
+    return False
+
+
+def _quiz_questions_need_fallback(
+    questions: list[dict[str, Any]],
+    quiz_material: dict[str, Any],
+    num_questions: int,
+    include_open: bool,
+) -> bool:
+    focus_keywords = _build_quiz_focus_keywords(quiz_material)
+    mcq_questions = [
+        question
+        for question in questions
+        if isinstance(question, dict) and question.get("question_type") == "multiple_choice"
+    ]
+    open_questions = [
+        question
+        for question in questions
+        if isinstance(question, dict) and question.get("question_type") == "open"
+    ]
+
+    if len(mcq_questions) < num_questions:
+        return True
+    if sum(1 for question in mcq_questions if _mcq_question_is_weak(question, focus_keywords)) >= max(1, len(mcq_questions) // 2):
+        return True
+    if include_open:
+        if len(open_questions) < 2:
+            return True
+        if any(_open_question_is_weak(question, focus_keywords) for question in open_questions):
+            return True
+
+    return False
+
+
 @router.post("/generate")
 async def generate_quiz(
     request: QuizGenerateRequest,
@@ -124,18 +326,17 @@ async def generate_quiz(
     if existing_questions:
         return {"questions": [_sanitize_question_for_client(q) for q in existing_questions]}
 
-    onboarding = svc.get_onboarding(current_user["id"])
-    prompt_context = get_user_context(onboarding)
-    content = (session.get("user_input") or "") + "\n" + (session.get("summary") or "")
+    quiz_material = _build_quiz_material(session)
+    fallback_title = str(session.get("title") or "Chu de")
+    session["title"] = fallback_title
 
     try:
         mcq_result = await gemini.generate_json(
             QUIZ_GENERATE_PROMPT.format(
-                content=content,
-                summary=session.get("summary", ""),
+                title=session.get("title", ""),
+                material_json=json.dumps(quiz_material, ensure_ascii=False, indent=2),
                 num_questions=request.num_questions,
                 language=session.get("language", "vi"),
-                **prompt_context,
             )
         )
         questions = mcq_result.get("questions") or []
@@ -144,19 +345,32 @@ async def generate_quiz(
             open_result = await gemini.generate_json(
                 OPEN_QUESTIONS_PROMPT.format(
                     title=session.get("title", ""),
-                    summary=session.get("summary", ""),
+                    material_json=json.dumps(quiz_material, ensure_ascii=False, indent=2),
                     language=session.get("language", "vi"),
-                    **prompt_context,
                 )
             )
             questions.extend(open_result.get("questions") or [])
+        if _quiz_questions_need_fallback(
+            [question for question in questions if isinstance(question, dict)],
+            quiz_material,
+            request.num_questions,
+            request.include_open,
+        ):
+            questions = build_targeted_quiz_fallback_v2(
+                str(session.get("title") or "Chá»§ Ä‘á»"),
+                str(session.get("summary") or ""),
+                [str(point) for point in (session.get("key_points") or []) if str(point)],
+                request.num_questions,
+                quiz_material=quiz_material,
+            )
     except Exception as exc:
         print(f"[quiz] Quiz generation failed, using fallback: {exc}")
-        questions = build_quiz_fallback(
+        questions = build_targeted_quiz_fallback_v2(
             str(session.get("title") or "Chủ đề"),
             str(session.get("summary") or ""),
             [str(point) for point in (session.get("key_points") or []) if str(point)],
             request.num_questions,
+            quiz_material=quiz_material,
         )
 
     prepared_questions = [

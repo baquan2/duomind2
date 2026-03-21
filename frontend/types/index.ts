@@ -24,6 +24,11 @@ export interface OnboardingData {
   industry?: string | null
   job_title?: string | null
   years_experience?: number | null
+  target_role?: string | null
+  current_focus?: string | null
+  current_challenges?: string | null
+  desired_outcome?: string | null
+  learning_constraints?: string | null
   learning_goals: string[]
   topics_of_interest: string[]
   learning_style: "visual" | "reading" | "practice" | "mixed"
@@ -43,6 +48,12 @@ export interface Correction {
   explanation: string
 }
 
+export interface SourceReference {
+  label: string
+  url: string
+  snippet?: string | null
+}
+
 export interface AnalyzeResult {
   session_id: string
   title: string
@@ -51,8 +62,10 @@ export interface AnalyzeResult {
   summary: string
   key_points: string[]
   corrections: Correction[]
+  knowledge_detail_data: KnowledgeDetailData
   topic_tags: string[]
   mindmap_data: MindMapData
+  sources: SourceReference[]
   source_label?: string | null
   input_preview?: string | null
 }
@@ -78,6 +91,36 @@ export interface KnowledgeDetailSection {
   content: string
 }
 
+export type KnowledgeSectionKey =
+  | "core_concept"
+  | "mechanism"
+  | "components_and_relationships"
+  | "persona_based_example"
+  | "real_world_applications"
+  | "common_misconceptions"
+  | "next_step_self_study"
+
+export interface ContentBlueprint {
+  core_definition: string
+  scope_boundary: string
+  mechanism: string
+  components: string
+  input_process_output: string
+  example: string
+  application: string
+  misconceptions: string
+  conditions_and_limits: string
+  related_concepts: string
+  decision_value: string
+}
+
+export interface KnowledgeSectionBriefs {
+  overview: string[]
+  core_takeaways: string[]
+  detail_focus: string[]
+  exploration: string[]
+}
+
 export interface KnowledgeTeachingAdaptation {
   focus_priority: string
   tone: string
@@ -88,6 +131,9 @@ export interface KnowledgeTeachingAdaptation {
 export interface KnowledgeDetailData {
   title: string
   summary: string
+  content_blueprint?: ContentBlueprint
+  section_briefs?: KnowledgeSectionBriefs
+  active_section_keys?: KnowledgeSectionKey[]
   detailed_sections: {
     core_concept: KnowledgeDetailSection
     mechanism: KnowledgeDetailSection
@@ -108,6 +154,7 @@ export interface ExploreResult {
   knowledge_detail_data: KnowledgeDetailData
   topic_tags: string[]
   mindmap_data: MindMapData
+  sources: SourceReference[]
 }
 
 export type MentorIntent =
@@ -144,6 +191,25 @@ export interface MentorSkillGap {
 export interface MentorSource {
   label: string
   url: string
+  snippet?: string | null
+}
+
+export interface MentorDecisionSummary {
+  headline: string
+  priority_label: string
+  priority_value: string
+  reason: string
+  next_action: string
+  confidence_note: string
+}
+
+export interface MentorMemoryItem {
+  id: string
+  memory_type: string
+  memory_key: string
+  memory_value: unknown
+  confidence?: number | null
+  updated_at?: string | null
 }
 
 export interface MentorMessagePayload {
@@ -151,6 +217,7 @@ export interface MentorMessagePayload {
   career_paths: MentorCareerPath[]
   market_signals: MentorMarketSignal[]
   skill_gaps: MentorSkillGap[]
+  decision_summary?: MentorDecisionSummary | null
   recommended_learning_steps: string[]
   suggested_followups: string[]
   sources: MentorSource[]
@@ -223,6 +290,7 @@ export interface LearningSession {
   corrections?: Correction[]
   infographic_data?: KnowledgeDetailData | null
   mindmap_data?: MindMapData | null
+  sources?: SourceReference[]
   language?: string
   created_at: string
   is_bookmarked: boolean

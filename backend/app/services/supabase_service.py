@@ -5,6 +5,29 @@ from supabase import Client
 
 
 class SupabaseService:
+    CONTEXT_MEMORY_KEYS = {
+        "age_range",
+        "status",
+        "education_level",
+        "major",
+        "school_name",
+        "industry",
+        "job_title",
+        "years_experience",
+        "target_role",
+        "desired_outcome",
+        "current_focus",
+        "current_challenges",
+        "learning_constraints",
+        "learning_goals",
+        "topics_of_interest",
+        "learning_style",
+        "daily_study_minutes",
+        "ai_persona",
+        "ai_persona_description",
+        "ai_recommended_topics",
+    }
+
     def __init__(self, client: Client) -> None:
         self.db = client
 
@@ -15,6 +38,14 @@ class SupabaseService:
         if isinstance(data, dict):
             return data
         return None
+
+    @staticmethod
+    def _has_meaningful_value(value: Any) -> bool:
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, list):
+            return len(value) > 0
+        return value is not None
 
     def get_profile(self, user_id: str) -> dict[str, Any] | None:
         try:
@@ -60,6 +91,42 @@ class SupabaseService:
     def set_onboarded(self, user_id: str) -> None:
         self.db.table("profiles").update({"is_onboarded": True}).eq("id", user_id).execute()
 
+    def _merge_onboarding_with_memory(
+        self,
+        user_id: str,
+        onboarding: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        try:
+            memories = self.get_mentor_memory(user_id, limit=20)
+        except Exception:
+            memories = []
+
+        if not onboarding and not memories:
+            return None
+
+        merged = dict(onboarding or {})
+        if "user_id" not in merged:
+            merged["user_id"] = user_id
+
+        for memory in memories:
+            memory_key = str(memory.get("memory_key") or "").strip()
+            if memory_key not in self.CONTEXT_MEMORY_KEYS:
+                continue
+
+            current_value = merged.get(memory_key)
+            if self._has_meaningful_value(current_value):
+                continue
+
+            memory_value = memory.get("memory_value")
+            if isinstance(memory_value, str):
+                memory_value = memory_value.strip()
+            if not self._has_meaningful_value(memory_value):
+                continue
+
+            merged[memory_key] = memory_value
+
+        return merged
+
     def get_onboarding(self, user_id: str) -> dict[str, Any] | None:
         result = (
             self.db.table("user_onboarding")
@@ -67,7 +134,8 @@ class SupabaseService:
             .eq("user_id", user_id)
             .execute()
         )
-        return self._first(result.data)
+        onboarding = self._first(result.data)
+        return self._merge_onboarding_with_memory(user_id, onboarding)
 
     def upsert_onboarding(self, user_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         payload = {"user_id": user_id, **data}
@@ -80,8 +148,16 @@ class SupabaseService:
 
     def create_session(self, user_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         payload = {"user_id": user_id, **data}
-        result = self.db.table("learning_sessions").insert(payload).execute()
-        return self._first(result.data)
+        try:
+            result = self.db.table("learning_sessions").insert(payload).execute()
+            return self._first(result.data)
+        except Exception as exc:
+            if "sources" in payload and "sources" in str(exc).lower():
+                legacy_payload = dict(payload)
+                legacy_payload.pop("sources", None)
+                result = self.db.table("learning_sessions").insert(legacy_payload).execute()
+                return self._first(result.data)
+            raise
 
     def get_sessions(
         self,
@@ -331,12 +407,39 @@ class SupabaseService:
             "confidence": confidence,
             "source_thread_id": source_thread_id,
         }
-        result = (
-            self.db.table("mentor_memory")
-            .upsert(payload, on_conflict="user_id,memory_type,memory_key")
-            .execute()
-        )
-        return self._first(result.data)
+        try:
+            result = (
+                self.db.table("mentor_memory")
+                .upsert(payload, on_conflict="user_id,memory_type,memory_key")
+                .execute()
+            )
+            return self._first(result.data)
+        except Exception as exc:
+            if "no unique or exclusion constraint matching the ON CONFLICT specification" not in str(exc):
+                raise
+
+            existing = (
+                self.db.table("mentor_memory")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("memory_type", memory_type)
+                .eq("memory_key", memory_key)
+                .limit(1)
+                .execute()
+            )
+            existing_row = self._first(existing.data)
+
+            if existing_row:
+                result = (
+                    self.db.table("mentor_memory")
+                    .update(payload)
+                    .eq("id", existing_row["id"])
+                    .execute()
+                )
+                return self._first(result.data)
+
+            result = self.db.table("mentor_memory").insert(payload).execute()
+            return self._first(result.data)
 
     def get_mentor_memory(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
         result = (

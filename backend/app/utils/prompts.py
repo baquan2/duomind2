@@ -173,7 +173,7 @@ JSON SHAPE:
       "content": "string"
     }},
     "persona_based_example": {{
-      "title": "Ví dụ trực quan theo đúng persona",
+      "title": "Ví dụ trực quan",
       "content": "string"
     }},
     "real_world_applications": {{
@@ -284,6 +284,51 @@ JSON SHAPE:
 """
 
 
+# Override onboarding prompt with clean Vietnamese to avoid mojibake affecting Gemini quality.
+ONBOARDING_CLASSIFY_PROMPT = """
+Bạn là Learning Architect của DUO MIND.
+Nhiệm vụ của bạn là đọc hồ sơ người học và tạo ra một learning persona ngắn gọn, thực dụng, đủ rõ để hệ thống cá nhân hóa mentor, roadmap và cách giải thích.
+
+HỒ SƠ NGƯỜI HỌC:
+{learner_profile}
+
+MỤC TIÊU:
+- Xác định người học này đang ở giai đoạn nào.
+- Chỉ ra cách dạy phù hợp nhất với quỹ thời gian, bối cảnh và mục tiêu nghề nghiệp của họ.
+- Gợi ý 5 chủ đề nên ưu tiên trước, bám sát mục tiêu thực tế thay vì trả lời chung chung.
+
+NGUYÊN TẮC:
+1. Viết hoàn toàn bằng tiếng Việt có dấu.
+2. Persona phải ngắn, tự nhiên, không giống nhãn máy móc.
+3. description gồm 2 đến 4 câu, nêu rõ nên dạy người học này theo cách nào để học hiệu quả hơn.
+4. recommended_topics phải có đúng 5 mục, ưu tiên kỹ năng hoặc chủ đề sát với target role nếu hồ sơ có nêu.
+5. learning_tips phải có đúng 3 mục, ngắn và thực dụng.
+6. personalization_rules phải nêu rõ explanation_style, example_style, pacing và content_depth.
+7. Không bịa thêm chi tiết không có trong hồ sơ.
+8. Chỉ trả về JSON hợp lệ, không thêm markdown và không thêm văn bản ngoài JSON.
+
+JSON SHAPE:
+{{
+  "persona_name": "string",
+  "description": "string",
+  "background": "string",
+  "learning_goal": "string",
+  "daily_study_capacity": "string",
+  "learning_style": "string",
+  "busyness_level": "string",
+  "practical_example_need": "string",
+  "recommended_topics": ["string", "string", "string", "string", "string"],
+  "learning_tips": ["string", "string", "string"],
+  "personalization_rules": {{
+    "explanation_style": "string",
+    "example_style": "string",
+    "pacing": "string",
+    "content_depth": "string"
+  }}
+}}
+"""
+
+
 INFOGRAPHIC_GENERATE_PROMPT = """
 You are DUO MIND's visual summarizer.
 Turn the topic below into a direct, educational infographic data model.
@@ -323,30 +368,25 @@ JSON SHAPE:
 
 QUIZ_GENERATE_PROMPT = """
 You are DUO MIND's assessment designer.
-Create a multiple-choice quiz from the content below.
+Create a focused multiple-choice quiz from the study material below.
 Respond in {language}. Return ONLY valid JSON.
 
-LEARNER CONTEXT:
-- Persona: {user_persona}
-- Persona description: {user_persona_description}
-- Difficulty level: {difficulty_level}
-- Learning goals: {learning_goals}
-- Learning style: {learning_style}
-- Daily study minutes: {daily_study_minutes}
+TOPIC: {title}
 
-CONTENT:
-\"\"\"
-{content}
-\"\"\"
-
-SUMMARY:
-{summary}
+STUDY MATERIAL:
+{material_json}
 
 RULES:
 1. Create exactly {num_questions} multiple-choice questions.
 2. Each question must have 4 options: A, B, C, D.
-3. Explanations must teach, not just reveal the answer.
-4. Difficulty mix should feel balanced.
+3. Every question must stay tightly centered on the topic and material above.
+4. Prefer testing core meaning, mechanism, right-vs-wrong distinctions, misconceptions, and real application of the exact content.
+5. If the material contains corrections, use them to create at least one question that checks the corrected idea.
+6. Every question stem must mention the exact concept, distinction, or claim being tested. Avoid generic stems such as "phần 1" or "ý nào đúng".
+7. Wrong options must be plausible but clearly refuted by the supplied material. Do not use joke answers or unrelated trivia.
+8. Explanations must teach briefly, not just reveal the answer.
+9. Difficulty mix should feel balanced.
+10. Do not ask trivia outside the supplied material.
 
 JSON SHAPE:
 {{
@@ -371,25 +411,22 @@ JSON SHAPE:
 
 
 OPEN_QUESTIONS_PROMPT = """
-You are DUO MIND's critical-thinking coach.
-Create open-ended questions from the topic below.
+You are DUO MIND's critical-thinking question designer.
+Create focused open-ended questions from the topic and study material below.
 Respond in {language}. Return ONLY valid JSON.
 
-LEARNER CONTEXT:
-- Persona: {user_persona}
-- Persona description: {user_persona_description}
-- Difficulty level: {difficulty_level}
-- Learning goals: {learning_goals}
-- Learning style: {learning_style}
-
 TOPIC: {title}
-SUMMARY:
-{summary}
+STUDY MATERIAL:
+{material_json}
 
 RULES:
-1. Create 2-3 open questions.
-2. Questions must invite analysis, evaluation, or application.
-3. Include thinking_hints and sample_answer_points for each question.
+1. Create exactly 2 open questions.
+2. Questions must stay on the main topic and extend thinking through analysis, evaluation, comparison, or application.
+3. Question 1 should force the learner to explain why a statement is right, wrong, incomplete, or easy to misunderstand if the material supports that.
+4. Question 2 should ask the learner to apply, compare, or re-explain the exact topic in a concrete situation.
+5. Include exactly 2 thinking_hints and 2-3 sample_answer_points for each question.
+6. Do not mention persona, learner profile, or unrelated topics.
+7. Avoid vague prompts such as "Theo bạn..." unless the rest of the stem is specific and anchored to the material.
 
 JSON SHAPE:
 {{
@@ -470,4 +507,183 @@ JSON SHAPE:
   "achievement_highlights": ["Highlight 1", "Highlight 2"],
   "next_milestone": "Next milestone"
 }}
+"""
+
+
+ANALYZE_CONTENT_FOCUSED_PROMPT = """
+You are DUO MIND's precision knowledge analyst.
+Your job is to identify exactly what the learner is trying to understand, evaluate the submitted content, and explain only the relevant topic directly.
+Respond in {language}. Return ONLY valid JSON.
+
+FOCUS_TOPIC:
+{focus_topic}
+
+LEARNER_CONTEXT:
+{learner_context_json}
+
+CONTENT TO ANALYZE:
+\"\"\"
+{content}
+\"\"\"
+
+STRICT DECISION RULES:
+1. Keep every output centered on FOCUS_TOPIC. Do not drift into neighboring topics unless they are required to explain FOCUS_TOPIC.
+2. Treat the submitted content as the learner's current notes, draft understanding, or source text to evaluate.
+3. If the content contains mixed ideas, prioritize the idea most directly related to FOCUS_TOPIC.
+4. If evidence is not sufficient to verify a claim, use accuracy_assessment = "unverifiable" and accuracy_score = null.
+5. Explain directly. Do not coach, do not motivate, and do not ask reflective questions.
+6. Do not use generic framing such as "ở góc nhìn", "điều quan trọng là", "người học nên", "hãy thử nghĩ", or "phần này sẽ".
+7. summary must answer the learner first: what FOCUS_TOPIC means in this content, what is correct or unclear, and what matters most.
+8. key_points must be 4 to 5 concise factual takeaways directly about FOCUS_TOPIC.
+9. corrections must only include specific unclear, weak, or incorrect statements found in the content.
+10. title must be the topic name, not a generic label.
+11. topic_tags must stay close to FOCUS_TOPIC, not broad adjacent domains.
+
+LENGTH RULES:
+- summary: 3 to 4 bullets
+- each summary bullet: 1 sentence
+- each key point: under 22 words
+- accuracy_reasoning: 1 short sentence
+
+JSON SHAPE:
+{{
+  "title": "Focused topic title",
+  "accuracy_score": 78,
+  "accuracy_assessment": "high|medium|low|unverifiable",
+  "accuracy_reasoning": "One short explanation of the score",
+  "summary": "- Bullet 1\\n- Bullet 2\\n- Bullet 3",
+  "key_points": [
+    "Focused takeaway 1",
+    "Focused takeaway 2",
+    "Focused takeaway 3",
+    "Focused takeaway 4",
+    "Focused takeaway 5"
+  ],
+  "corrections": [
+    {{
+      "original": "Specific unclear or incorrect claim from the content",
+      "correction": "Better or correct version",
+      "explanation": "Why the correction is needed"
+    }}
+  ],
+  "topic_tags": ["tag1", "tag2", "tag3", "tag4"],
+  "enrichment": "Optional extra context in 1 sentence if truly useful"
+}}
+"""
+
+
+ANALYZE_CONTENT_FOCUSED_REWRITE_PROMPT = """
+You are rewriting a weak DUO MIND analysis draft so it becomes focused, correct, and directly useful.
+Respond in {language}. Return ONLY valid JSON.
+
+FOCUS_TOPIC:
+{focus_topic}
+
+LEARNER_CONTEXT:
+{learner_context_json}
+
+CONTENT TO ANALYZE:
+\"\"\"
+{content}
+\"\"\"
+
+CURRENT DRAFT JSON:
+{draft_json}
+
+REWRITE RULES:
+1. Keep the answer tightly centered on FOCUS_TOPIC.
+2. Remove generic, broad, or off-topic explanations.
+3. If the draft sounds like a lecture about the whole field, narrow it back to the specific topic the learner needs.
+4. summary must be short, direct, and answer-first.
+5. key_points must be concrete and directly related to FOCUS_TOPIC.
+6. corrections must stay anchored to actual statements in the content.
+7. Do not use coaching language, meta framing, or vague filler.
+8. Keep the same JSON schema as the main analysis prompt.
+"""
+
+
+EXPLORE_TOPIC_FOCUSED_PROMPT = """
+Ban la AI giai thich kien thuc chinh xac cua DUO MIND.
+Nhiem vu cua ban la tra loi dung chu de nguoi dung can kham pha, khong lan man sang cac nhom kien thuc lan can.
+Chi tra ve JSON hop le.
+
+USER_PROMPT:
+\"\"\"
+{prompt}
+\"\"\"
+
+FOCUS_TOPIC:
+{focus_topic}
+
+LEARNER_CONTEXT:
+{learner_context_json}
+
+MUC TIEU:
+1. Giai thich dung FOCUS_TOPIC bang noi dung thuc chat, de hieu, co logic.
+2. Neu USER_PROMPT la mot cau hoi, cau dau tien cua core_concept phai tra loi thang cau hoi do.
+3. Neu co learner_context, chi dung de chon vi du phu hop. Khong de context lam lech chu de.
+4. Moi phan phai noi them thong tin moi, khong lap y va khong dien giai mo rong lan man.
+
+CAM:
+- noi chung chung nhu "day la mot khai niem quan trong"
+- lap lai cau hoi goc trong moi section
+- coaching, hoi nguoc lai nguoi hoc, hay noi "nguoi hoc nen"
+- bien cau tra loi thanh bai tong quan ve ca linh vuc rong hon FOCUS_TOPIC
+
+DO DAI:
+- summary: 4 bullet, moi bullet 1 cau
+- key_points: dung 5 y, moi y duoi 22 tu
+- moi detailed section: 90 den 150 tu, noi truc tiep vao kien thuc
+
+JSON SHAPE:
+{{
+  "title": "string",
+  "summary": "- Ý cốt lõi 1\\n- Ý cốt lõi 2\\n- Ý cốt lõi 3\\n- Ý cốt lõi 4",
+  "key_points": ["string", "string", "string", "string", "string"],
+  "topic_tags": ["string", "string", "string", "string"],
+  "detailed_sections": {{
+    "core_concept": {{"title": "Khái niệm cốt lõi", "content": "string"}},
+    "mechanism": {{"title": "Bản chất / cơ chế hoạt động", "content": "string"}},
+    "components_and_relationships": {{"title": "Các thành phần chính và quan hệ giữa chúng", "content": "string"}},
+    "persona_based_example": {{"title": "Ví dụ trực quan dễ hiểu", "content": "string"}},
+    "real_world_applications": {{"title": "Ứng dụng thực tế", "content": "string"}},
+    "common_misconceptions": {{"title": "Nhầm lẫn phổ biến", "content": "string"}},
+    "next_step_self_study": {{"title": "Tự học tiếp trong 1 buổi ngắn", "content": "string"}}
+  }},
+  "teaching_adaptation": {{
+    "focus_priority": "string",
+    "tone": "string",
+    "depth_control": "string",
+    "example_strategy": "string"
+  }}
+}}
+"""
+
+
+EXPLORE_TOPIC_FOCUSED_REWRITE_PROMPT = """
+Ban dang sua mot ban nhap Explore bi lan man, generic, hoac lech chu de.
+Chi tra ve JSON hop le.
+
+USER_PROMPT:
+\"\"\"
+{prompt}
+\"\"\"
+
+FOCUS_TOPIC:
+{focus_topic}
+
+LEARNER_CONTEXT:
+{learner_context_json}
+
+CURRENT DRAFT JSON:
+{draft_json}
+
+REWRITE RULES:
+1. Dua cau tra loi ve dung FOCUS_TOPIC.
+2. Xoa cac doan noi ve linh vuc rong hon neu khong can de giai thich chu de chinh.
+3. Core_concept phai tra loi thang cau hoi nguoi dung muon hieu.
+4. Key_points va summary phai doc la biet ngay chu de can kham pha la gi.
+5. Neu can dung vi du, hay dung vi du don gian va sat FOCUS_TOPIC.
+6. Khong coaching, khong meta framing, khong noi chuyen ve "nguoi hoc".
+7. Giu nguyen JSON shape nhu prompt chinh.
 """

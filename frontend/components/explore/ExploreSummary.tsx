@@ -2,20 +2,27 @@ import { Lightbulb, Sparkles } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { extractSummaryBullets } from "@/lib/summary-bullets"
+import type { KnowledgeDetailData } from "@/types"
 
 interface ExploreSummaryProps {
   summary: string
   keyPoints: string[]
+  knowledgeDetailData: KnowledgeDetailData
   topicTags: string[]
 }
 
 export function ExploreSummary({
   summary,
   keyPoints,
+  knowledgeDetailData,
   topicTags: _topicTags,
 }: ExploreSummaryProps) {
-  const overviewBullets = extractSummaryBullets(summary, [], 5)
-  const theoryBullets = keyPoints.slice(0, 5)
+  const overviewBullets = knowledgeDetailData?.section_briefs?.overview?.length
+    ? knowledgeDetailData.section_briefs.overview.slice(0, 4)
+    : extractSummaryBullets(summary, keyPoints, 4)
+  const theoryBullets = knowledgeDetailData?.section_briefs?.core_takeaways?.length
+    ? knowledgeDetailData.section_briefs.core_takeaways.slice(0, 5)
+    : keyPoints.slice(0, 5)
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[1fr_1fr]">

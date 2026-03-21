@@ -7,7 +7,7 @@ interface StepIndicatorProps {
   total: number
 }
 
-const labels = ["Cơ bản", "Chi tiết", "Mục tiêu", "Hoàn thành"]
+const labels = ["Cơ bản", "Bối cảnh", "Mục tiêu", "Xác nhận"]
 
 export function StepIndicator({ current, total }: StepIndicatorProps) {
   return (

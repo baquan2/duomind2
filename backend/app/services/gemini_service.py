@@ -18,7 +18,7 @@ class GeminiService:
     def _configure(self) -> None:
         settings = get_settings()
         api_key = settings.GEMINI_API_KEY
-        model_name = self.model_name or settings.GEMINI_MODEL or "gemini-2.5-pro"
+        model_name = self.model_name or settings.GEMINI_MODEL or "gemini-2.5-flash"
         if not api_key:
             raise RuntimeError("Missing required setting: GEMINI_API_KEY")
 

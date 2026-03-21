@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-pro"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     SECRET_KEY: str = ""
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:3001"

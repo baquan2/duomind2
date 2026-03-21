@@ -14,7 +14,7 @@ export default async function HomePage() {
         navLabel="Đăng nhập"
         primaryHref="/signup"
         primaryLabel="Bắt đầu ngay"
-        statusLabel="Phân tích, khám phá và học tập cùng AI trong một hệ duy nhất"
+        statusLabel="Chốt mục tiêu nghề nghiệp, nhìn ra khoảng trống kỹ năng và học theo lộ trình rõ ràng"
       />
     )
   }
@@ -35,8 +35,8 @@ export default async function HomePage() {
       primaryLabel={isOnboarded ? "Mở dashboard" : "Hoàn tất onboarding"}
       statusLabel={
         isOnboarded
-          ? "Trở lại DUO MIND để tiếp tục học, khám phá và theo dõi tiến bộ"
-          : "Hoàn tất onboarding để DUO MIND cá nhân hóa lộ trình học cho bạn"
+          ? "Quay lại DUO MIND để tiếp tục roadmap, mentor và tiến trình học tập"
+          : "Hoàn tất onboarding để DUO MIND cá nhân hóa roadmap và mentor cho bạn"
       }
     />
   )

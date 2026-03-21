@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Route,
   UserRound,
 } from "lucide-react"
 import Link from "next/link"
@@ -32,6 +33,11 @@ const navItems = [
     icon: MessagesSquare,
   },
   {
+    href: "/roadmap",
+    label: "Lộ trình",
+    icon: Route,
+  },
+  {
     href: "/explore",
     label: "Khám phá",
     icon: Compass,
@@ -51,7 +57,7 @@ const navItems = [
     label: "Hồ sơ",
     icon: UserRound,
   },
-]
+] as const
 
 interface SidebarProps {
   displayName?: string | null

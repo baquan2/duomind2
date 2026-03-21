@@ -1,10 +1,6 @@
-"use client"
-
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import type { FormEvent } from "react"
-import { useState } from "react"
 import { CheckCircle2, UserPlus } from "lucide-react"
+import Link from "next/link"
+import { redirect } from "next/navigation"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -17,32 +13,58 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@/lib/supabase/server"
 
-export default function SignupPage() {
-  const router = useRouter()
-  const supabase = createClient()
+type SignupPageProps = {
+  searchParams?: {
+    error?: string | string[]
+    notice?: string | string[]
+  }
+}
 
-  const [fullName, setFullName] = useState("")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
+function getSingleValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value
+}
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError("")
-    setNotice("")
+function mapSignupError(message: string) {
+  const normalized = message.toLowerCase()
 
-    if (password !== confirmPassword) {
-      setError("Mật khẩu xác nhận chưa khớp.")
-      return
+  if (normalized.includes("user already registered")) {
+    return "Email này đã được đăng ký."
+  }
+
+  if (normalized.includes("password should be at least")) {
+    return "Mật khẩu quá ngắn. Hãy đặt mật khẩu mạnh hơn."
+  }
+
+  if (normalized.includes("invalid email")) {
+    return "Email không hợp lệ."
+  }
+
+  return "Không thể tạo tài khoản lúc này. Hãy thử lại."
+}
+
+export default function SignupPage({ searchParams }: SignupPageProps) {
+  const error = getSingleValue(searchParams?.error)
+  const notice = getSingleValue(searchParams?.notice)
+
+  async function signupAction(formData: FormData) {
+    "use server"
+
+    const fullName = String(formData.get("fullName") || "").trim()
+    const email = String(formData.get("email") || "").trim()
+    const password = String(formData.get("password") || "")
+    const confirmPassword = String(formData.get("confirmPassword") || "")
+
+    if (!email || !password || !confirmPassword) {
+      redirect(`/signup?error=${encodeURIComponent("Vui lòng nhập đầy đủ thông tin bắt buộc.")}`)
     }
 
-    setLoading(true)
+    if (password !== confirmPassword) {
+      redirect(`/signup?error=${encodeURIComponent("Mật khẩu xác nhận chưa khớp.")}`)
+    }
 
+    const supabase = createClient()
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -54,19 +76,16 @@ export default function SignupPage() {
     })
 
     if (signUpError) {
-      setError(signUpError.message)
-      setLoading(false)
-      return
+      redirect(`/signup?error=${encodeURIComponent(mapSignupError(signUpError.message))}`)
     }
 
     if (data.session) {
-      router.push("/onboarding")
-      router.refresh()
-      return
+      redirect("/onboarding")
     }
 
-    setNotice("Tài khoản đã được tạo. Hãy kiểm tra email để xác nhận đăng ký.")
-    setLoading(false)
+    redirect(
+      `/signup?notice=${encodeURIComponent("Tài khoản đã được tạo. Hãy kiểm tra email để xác nhận đăng ký.")}`
+    )
   }
 
   return (
@@ -80,21 +99,20 @@ export default function SignupPage() {
           <div>
             <CardTitle className="text-3xl font-semibold">Tạo tài khoản</CardTitle>
             <CardDescription className="mt-2 text-base">
-              Sau khi đăng ký, người dùng mới sẽ được đưa vào flow onboarding ở bước
-              tiếp theo.
+              Sau khi đăng ký, người dùng mới sẽ được đưa vào flow onboarding ở bước tiếp theo.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" action={signupAction}>
             <div className="space-y-2">
               <Label htmlFor="full-name">Họ và tên</Label>
               <Input
                 id="full-name"
+                name="fullName"
                 type="text"
                 placeholder="Nguyễn Văn A"
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
+                autoComplete="name"
               />
             </div>
 
@@ -102,10 +120,10 @@ export default function SignupPage() {
               <Label htmlFor="signup-email">Email</Label>
               <Input
                 id="signup-email"
+                name="email"
                 type="email"
                 placeholder="you@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
                 required
               />
             </div>
@@ -114,10 +132,10 @@ export default function SignupPage() {
               <Label htmlFor="signup-password">Mật khẩu</Label>
               <Input
                 id="signup-password"
+                name="password"
                 type="password"
                 placeholder="Tạo mật khẩu"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="new-password"
                 required
               />
             </div>
@@ -126,10 +144,10 @@ export default function SignupPage() {
               <Label htmlFor="confirm-password">Xác nhận mật khẩu</Label>
               <Input
                 id="confirm-password"
+                name="confirmPassword"
                 type="password"
                 placeholder="Nhập lại mật khẩu"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
+                autoComplete="new-password"
                 required
               />
             </div>
@@ -147,8 +165,8 @@ export default function SignupPage() {
               </Alert>
             ) : null}
 
-            <Button className="w-full" type="submit" disabled={loading}>
-              {loading ? "Đang tạo tài khoản..." : "Tạo tài khoản"}
+            <Button className="w-full" type="submit">
+              Tạo tài khoản
             </Button>
           </form>
 

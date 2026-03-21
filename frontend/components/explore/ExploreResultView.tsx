@@ -5,13 +5,13 @@ import { BookOpenText, Download, Loader2 } from "lucide-react"
 import type { ReactNode } from "react"
 import { useState } from "react"
 
-import { ExploreSummary } from "@/components/explore/ExploreSummary"
 import { KnowledgeDetail } from "@/components/explore/KnowledgeDetail"
+import { ExploreSummary } from "@/components/explore/ExploreSummary"
 import { MindMapViewer } from "@/components/mindmap/MindMapViewer"
 import { QuizContainer } from "@/components/quiz/QuizContainer"
+import { SourcesPanel } from "@/components/shared/SourcesPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { getSessionDetail } from "@/lib/api/history"
 import { exportSessionAsWord } from "@/lib/session-export"
 import type { ExploreResult } from "@/types"
@@ -23,6 +23,7 @@ interface ExploreResultViewProps {
 
 const SECTION_LINKS = [
   { id: "explore-summary", label: "Tổng quan" },
+  { id: "explore-sources", label: "Nguồn" },
   { id: "explore-knowledge", label: "Chi tiết kiến thức" },
   { id: "explore-mindmap", label: "Mind map" },
   { id: "explore-quiz", label: "Ôn tập" },
@@ -33,7 +34,10 @@ export function ExploreResultView({
   showHeader = true,
 }: ExploreResultViewProps) {
   const [downloading, setDownloading] = useState(false)
-  const knowledgeSectionCount = Object.keys(result.knowledge_detail_data?.detailed_sections ?? {}).length
+  const hasSources = result.sources.length > 0
+  const sectionLinks = hasSources
+    ? SECTION_LINKS
+    : SECTION_LINKS.filter((section) => section.id !== "explore-sources")
 
   const scrollToSection = (sectionId: string) => {
     document.getElementById(sectionId)?.scrollIntoView({
@@ -60,62 +64,42 @@ export function ExploreResultView({
       className="space-y-6"
     >
       {showHeader ? (
-        <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
-          <div className="rounded-[2rem] border border-border/70 bg-[linear-gradient(135deg,_rgba(15,118,110,0.1),_rgba(255,247,221,0.82))] p-6 shadow-sm shadow-primary/10">
-            <div className="space-y-4">
-              <Badge className="border-0 bg-primary text-primary-foreground">
-                Phiên {result.session_id.slice(0, 8)}
-              </Badge>
-              <div className="space-y-3">
-                <h2 className="font-display text-3xl font-semibold text-balance">
-                  {result.title}
-                </h2>
-                <p className="max-w-3xl text-sm leading-7 text-foreground/75">
-                  Kết quả được chia theo từng phần rõ ràng để bạn đọc nhanh, hiểu sâu, nhìn
-                  được toàn cảnh chủ đề và chuyển sang ôn tập mà không phải đoán nên bắt đầu
-                  từ đâu.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full bg-background/90"
-                onClick={() => void handleDownloadWord()}
-                disabled={downloading}
-              >
-                {downloading ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : (
-                  <Download className="mr-2 size-4" />
-                )}
-                Tải file Word
-              </Button>
+        <div className="rounded-[2rem] border border-border/70 bg-[linear-gradient(135deg,_rgba(15,118,110,0.1),_rgba(255,247,221,0.82))] p-6 shadow-sm shadow-primary/10">
+          <div className="space-y-4">
+            <Badge className="border-0 bg-primary text-primary-foreground">
+              Phiên {result.session_id.slice(0, 8)}
+            </Badge>
+            <div className="space-y-3">
+              <h2 className="font-display text-3xl font-semibold text-balance">
+                {result.title}
+              </h2>
+              <p className="max-w-3xl text-sm leading-7 text-foreground/75">
+                Kết quả được chia theo từng phần rõ ràng để bạn đọc nhanh, hiểu sâu,
+                nhìn được toàn cảnh chủ đề và chuyển sang ôn tập mà không phải đoán
+                nên bắt đầu từ đâu.
+              </p>
             </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <ResultStat
-              title="Ý chính"
-              value={`${result.key_points.length}`}
-              description="Các điểm quan trọng đã được AI gom lại."
-            />
-            <ResultStat
-              title="Chi tiết kiến thức"
-              value={knowledgeSectionCount ? "Sẵn sàng" : "Dự phòng"}
-              description="Giải thích sâu theo logic học tập và bối cảnh persona."
-            />
-            <ResultStat
-              title="Mind map"
-              value={result.mindmap_data?.nodes?.length ? "Đã tải" : "Đang chờ"}
-              description="Sơ đồ khái niệm hiển thị trong cùng phiên học."
-            />
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full bg-background/90"
+              onClick={() => void handleDownloadWord()}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 size-4" />
+              )}
+              Tải file Word
+            </Button>
           </div>
         </div>
       ) : null}
 
       <div className="sticky top-3 z-10 rounded-2xl border border-border/70 bg-background/92 p-2 shadow-sm backdrop-blur">
         <div className="flex flex-wrap gap-2">
-          {SECTION_LINKS.map((section) => (
+          {sectionLinks.map((section) => (
             <Button
               key={section.id}
               type="button"
@@ -138,22 +122,34 @@ export function ExploreResultView({
         <ExploreSummary
           summary={result.summary}
           keyPoints={result.key_points}
+          knowledgeDetailData={result.knowledge_detail_data}
           topicTags={result.topic_tags}
         />
       </SectionBlock>
 
+      {hasSources ? (
+        <SectionBlock
+          id="explore-sources"
+          eyebrow="Bước 2"
+          title="Nguồn xác minh"
+          description="Các nguồn này được dùng để bám câu trả lời vào dữ kiện thay vì chỉ dựa vào suy đoán của mô hình."
+        >
+          <SourcesPanel sources={result.sources} />
+        </SectionBlock>
+      ) : null}
+
       <SectionBlock
         id="explore-knowledge"
-        eyebrow="Bước 2"
+        eyebrow={hasSources ? "Bước 3" : "Bước 2"}
         title="Chi tiết kiến thức"
-        description="Phần này trình bày lại chủ đề theo logic học tập sâu: bản chất, cơ chế, ví dụ theo persona, ứng dụng và bước tự học tiếp."
+        description="Phần này trình bày lại chủ đề theo đúng trục kiến thức: bản chất, cơ chế, ví dụ, ứng dụng và điểm cần nắm tiếp."
       >
         <KnowledgeDetail data={result.knowledge_detail_data} />
       </SectionBlock>
 
       <SectionBlock
         id="explore-mindmap"
-        eyebrow="Bước 3"
+        eyebrow={hasSources ? "Bước 4" : "Bước 3"}
         title="Mind map"
         description="Sơ đồ được dựng trực tiếp từ kết quả AI đã tổng hợp để bạn nhìn được toàn cảnh chủ đề."
       >
@@ -162,33 +158,13 @@ export function ExploreResultView({
 
       <SectionBlock
         id="explore-quiz"
-        eyebrow="Bước 4"
+        eyebrow={hasSources ? "Bước 5" : "Bước 4"}
         title="Ôn tập"
-        description="Sau khi xem tổng quan, chi tiết kiến thức và sơ đồ, bạn có thể chuyển sang quiz để kiểm tra lại."
+        description="Sau khi xem tổng quan, chi tiết kiến thức và sơ đồ, bạn có thể chuyển sang quiz và câu hỏi phản biện để kiểm tra lại."
       >
         <QuizContainer sessionId={result.session_id} />
       </SectionBlock>
     </motion.section>
-  )
-}
-
-function ResultStat({
-  title,
-  value,
-  description,
-}: {
-  title: string
-  value: string
-  description: string
-}) {
-  return (
-    <Card className="border border-border/70 bg-card/92">
-      <CardContent className="space-y-2 p-4">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
-        <p className="font-display text-2xl font-semibold">{value}</p>
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-      </CardContent>
-    </Card>
   )
 }
 

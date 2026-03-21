@@ -1,8 +1,9 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { BookOpenText, Compass, Sparkles, Wand2 } from "lucide-react"
-import { useState } from "react"
+import { Compass, Sparkles, Wand2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 
 import { ExploreResultView } from "@/components/explore/ExploreResultView"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -28,7 +29,7 @@ const OUTPUT_GUIDE = [
   },
   {
     title: "Chi tiết kiến thức",
-    description: "Nội dung được giải thích sâu theo logic học tập và đúng persona của bạn.",
+    description: "Chủ đề được giải thích theo đúng trọng tâm: khái niệm, cơ chế, ví dụ và ứng dụng.",
   },
   {
     title: "Mind map toàn cảnh",
@@ -37,10 +38,22 @@ const OUTPUT_GUIDE = [
 ]
 
 export default function ExplorePage() {
+  const searchParams = useSearchParams()
   const [prompt, setPrompt] = useState("")
   const [result, setResult] = useState<ExploreResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const prefilledPrompt = searchParams.get("prompt")?.trim() || ""
+
+  useEffect(() => {
+    if (!prefilledPrompt) {
+      return
+    }
+
+    setPrompt(prefilledPrompt)
+    setResult(null)
+    setError(null)
+  }, [prefilledPrompt])
 
   const handleExplore = async (nextPrompt?: string) => {
     const query = (nextPrompt ?? prompt).trim()
@@ -76,8 +89,8 @@ export default function ExplorePage() {
               Khám phá bất kỳ chủ đề nào bằng prompt tự nhiên
             </h1>
             <p className="text-sm leading-7 text-foreground/75 sm:text-base">
-              DUO MIND sẽ đọc prompt của bạn, giải thích chủ đề theo persona, trình bày phần
-              tổng quan, chi tiết kiến thức và mind map trong cùng một phiên học.
+              DUO MIND sẽ trả lời thẳng vào chủ đề bạn hỏi, rồi tách rõ phần tổng quan,
+              chi tiết kiến thức và mind map trong cùng một phiên học.
             </p>
           </div>
         </div>
@@ -104,6 +117,13 @@ export default function ExplorePage() {
                 }
               }}
             />
+
+            {prefilledPrompt ? (
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-6 text-foreground/82">
+                Prompt này được đưa từ roadmap hoặc mentor. Bạn có thể chỉnh lại trước khi bấm
+                <span className="font-medium text-foreground"> Khám phá</span>.
+              </div>
+            ) : null}
 
             <div className="space-y-3">
               <p className="text-sm font-medium">Prompt mẫu</p>
@@ -198,7 +218,7 @@ export default function ExplorePage() {
         >
           {[
             "Đọc và hiểu prompt",
-            "Giải thích sâu theo persona",
+            "Giải thích đúng trọng tâm",
             "Dựng mind map cho cùng phiên học",
           ].map((label, index) => (
             <Card key={label} className="border border-border/70 bg-card/92">

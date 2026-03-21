@@ -62,6 +62,7 @@ README.md                    ← File này (tổng quan + hướng dẫn)
 11-quiz-openquestion.md      ← Trắc nghiệm + câu hỏi tự luận tư duy phản biện
 12-history-analytics.md      ← Lịch sử học + AI tổng hợp kiến thức
 13-deployment.md             ← Deploy Vercel + Railway + biến môi trường
+11-commercial-upgrade-plan.md ← Kế hoạch nâng cấp 3 ngày theo hướng thương mại hóa
 ```
 
 ---

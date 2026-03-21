@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DUO MIND Pitch Deck</title>
+    <style>
+      :root {
+        --bg: #04121d;
+        --card: rgba(255, 255, 255, 0.08);
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f8fafc;
+        --muted: rgba(248, 250, 252, 0.72);
+        --cyan: #67e8f9;
+        --sky: #7dd3fc;
+        --amber: #fde68a;
+        --green: #86efac;
+        --shadow: 0 24px 60px rgba(2, 8, 23, 0.28);
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Be Vietnam Pro", Arial, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(103, 232, 249, 0.14), transparent 24%),
+          radial-gradient(circle at top right, rgba(253, 230, 138, 0.1), transparent 22%),
+          linear-gradient(180deg, #020c14 0%, #04121d 48%, #06182a 100%);
+        overflow: hidden;
+      }
+
+      .progress { position: fixed; inset: 0 auto auto 0; width: 100%; height: 4px; background: rgba(255,255,255,.08); z-index: 30; }
+      .progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--sky), var(--amber)); transition: width .2s ease; }
+      .chrome {
+        position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+        width: min(calc(100vw - 32px), 1320px);
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 14px 18px; border-radius: 999px; z-index: 20;
+        border: 1px solid var(--line); background: rgba(4, 18, 29, 0.82); backdrop-filter: blur(18px); box-shadow: var(--shadow);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .mark {
+        width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center;
+        background: linear-gradient(135deg, rgba(103,232,249,.16), rgba(125,211,252,.24));
+        border: 1px solid var(--line); color: var(--cyan); font-weight: 800; letter-spacing: .08em;
+      }
+      .brand small, .pill { display: block; font-size: 12px; color: rgba(255,255,255,.56); text-transform: uppercase; letter-spacing: .16em; }
+      .brand strong { display: block; margin-top: 3px; font-size: 18px; }
+      .meta { display: flex; align-items: center; gap: 10px; }
+      .pill { padding: 9px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--muted); white-space: nowrap; }
+      .actions { display: flex; gap: 10px; }
+      button {
+        cursor: pointer; color: var(--text); background: rgba(255,255,255,.06); border: 1px solid var(--line);
+        border-radius: 999px; padding: 10px 14px; font-size: 13px;
+      }
+      button:hover { background: rgba(255,255,255,.12); }
+
+      .dots { position: fixed; right: 22px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; z-index: 15; }
+      .dots button { width: 12px; height: 12px; padding: 0; border-radius: 999px; background: rgba(255,255,255,.24); border: none; }
+      .dots button.active { transform: scale(1.35); background: linear-gradient(180deg, var(--cyan), var(--amber)); }
+
+      .deck { height: 100vh; overflow-y: auto; scroll-snap-type: y mandatory; }
+      .slide {
+        min-height: 100vh; scroll-snap-align: start; padding: 102px 32px 42px;
+        display: flex; align-items: center; justify-content: center; position: relative;
+      }
+      .slide::before {
+        content: ""; position: absolute; inset: 0;
+        background:
+          radial-gradient(circle at 10% 20%, rgba(103,232,249,.07), transparent 18%),
+          radial-gradient(circle at 88% 26%, rgba(253,230,138,.06), transparent 18%),
+          radial-gradient(circle at 60% 82%, rgba(134,239,172,.04), transparent 16%);
+        pointer-events: none;
+      }
+      .inner { position: relative; z-index: 1; width: min(100%, 1320px); }
+      .eyebrow {
+        display: inline-flex; gap: 8px; align-items: center; border-radius: 999px; padding: 8px 14px;
+        background: rgba(103,232,249,.08); border: 1px solid rgba(103,232,249,.22); color: var(--cyan);
+        text-transform: uppercase; letter-spacing: .18em; font-size: 12px; font-weight: 700;
+      }
+      h1, h2, h3, h4, p { margin: 0; }
+      .hero, .split { display: grid; gap: 24px; align-items: center; }
+      .hero { grid-template-columns: 1.08fr .92fr; }
+      .split { grid-template-columns: 1fr 1fr; }
+      .headline { margin-top: 18px; font-size: clamp(42px, 6vw, 72px); line-height: .95; letter-spacing: -.05em; }
+      .headline span { display: block; margin-top: 10px; background: linear-gradient(120deg, #fff 0%, var(--cyan) 44%, var(--amber) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .title { margin: 18px 0 12px; font-size: clamp(32px, 4vw, 50px); line-height: 1.03; letter-spacing: -.04em; }
+      .lead { max-width: 860px; color: var(--muted); font-size: 18px; line-height: 1.8; }
+      .panel, .card, .matrix, .screen { border: 1px solid var(--line); border-radius: 26px; background: var(--card); backdrop-filter: blur(16px); box-shadow: var(--shadow); }
+      .panel, .screen { padding: 24px; }
+      .stats, .grid3, .grid2, .timeline, .roadmap { display: grid; gap: 16px; }
+      .stats, .grid3, .roadmap { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .grid2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .timeline { grid-template-columns: repeat(5, minmax(0,1fr)); }
+      .card { padding: 22px; }
+      .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .18em; color: rgba(255,255,255,.54); }
+      .value { margin-top: 10px; font-size: 28px; font-weight: 800; }
+      .card h4 { margin-bottom: 10px; font-size: 20px; }
+      .card p, .panel p, .screen p, .matrix p { color: var(--muted); font-size: 15px; line-height: 1.75; }
+      .index {
+        width: 40px; height: 40px; margin-bottom: 14px; border-radius: 12px; display: grid; place-items: center;
+        background: rgba(103,232,249,.12); color: var(--cyan); font-weight: 800;
+      }
+      ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.75; }
+      .tagrow { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+      .tag {
+        border: 1px solid var(--line); background: rgba(255,255,255,.06); color: rgba(248,250,252,.88);
+        padding: 8px 12px; border-radius: 999px; font-size: 13px;
+      }
+      .screen-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+      .screen-row { display: grid; grid-template-columns: 1.08fr .92fr; gap: 12px; }
+      .screen-box { padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: rgba(255,255,255,.05); }
+      .screen-box h4 { margin-bottom: 8px; font-size: 20px; }
+      .badge { padding: 7px 12px; border-radius: 999px; font-size: 12px; text-transform: uppercase; letter-spacing: .14em; border: 1px solid var(--line); }
+      .badge.cyan { color: var(--cyan); background: rgba(103,232,249,.08); }
+      .badge.green { color: var(--green); background: rgba(134,239,172,.08); }
+      .badge.amber { color: var(--amber); background: rgba(253,230,138,.1); }
+      .hint { margin-top: 16px; font-size: 14px; color: rgba(255,255,255,.52); }
+
+      @media (max-width: 1160px) {
+        .hero, .split, .stats, .grid3, .grid2, .timeline, .roadmap, .screen-row { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 900px) {
+        body { overflow: auto; }
+        .deck { height: auto; overflow: visible; }
+        .slide { min-height: auto; padding: 102px 18px 34px; }
+        .chrome { width: calc(100vw - 20px); top: 10px; padding: 12px 14px; border-radius: 26px; }
+        .meta { display: none; }
+        .dots { display: none; }
+      }
+      @media print {
+        body { overflow: visible; background: #fff; color: #0f172a; }
+        .progress, .chrome, .dots { display: none; }
+        .deck { height: auto; overflow: visible; }
+        .slide { min-height: auto; page-break-after: always; padding: 28px 18px; }
+        .slide::before { display: none; }
+        .panel, .card, .matrix, .screen { box-shadow: none; background: #fff; border-color: #d7dde4; color: #0f172a; }
+        .lead, .card p, .panel p, .screen p, .matrix p, .hint, ul { color: #334155; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress"><span id="bar"></span></div>
+    <header class="chrome">
+      <div class="brand">
+        <div class="mark">DM</div>
+        <div>
+          <small>Pitch Deck</small>
+          <strong>DUO MIND | AI Learning Platform</strong>
+        </div>
+      </div>
+      <div class="meta">
+        <div class="pill" id="counter">Slide 1 / 12</div>
+        <div class="pill" id="title">Cover</div>
+      </div>
+      <div class="actions">
+        <button type="button" id="prev">Trước</button>
+        <button type="button" id="next">Tiếp</button>
+      </div>
+    </header>
+
+    <nav class="dots" id="dots"></nav>
+
+    <main class="deck" id="deck">
+      <section class="slide" data-title="Cover">
+        <div class="inner hero">
+          <div>
+            <div class="eyebrow">EdTech AI | Pitch Deck</div>
+            <h1 class="headline">DUO MIND<span>Biến AI từ công cụ trả lời thành hệ thống đồng hành học tập.</span></h1>
+            <p class="lead">Nền tảng học tập AI cá nhân hóa giúp người học hiểu đúng, học sâu, ôn tập hiệu quả và phát triển có định hướng nghề nghiệp trong cùng một trải nghiệm thống nhất.</p>
+            <div class="stats" style="margin-top:24px;">
+              <article class="card"><div class="kicker">Core Loop</div><div class="value">Onboard -> Learn</div><p>Onboarding, Mentor AI, Explore, Analyze, Quiz và History được kết nối thành một vòng lặp học tập.</p></article>
+              <article class="card"><div class="kicker">Output Layer</div><div class="value">Map + Quiz + Report</div><p>Người dùng không chỉ có câu trả lời mà còn có mind map, phản hồi, lưu trữ và báo cáo.</p></article>
+              <article class="card"><div class="kicker">Target Users</div><div class="value">Student + Working</div><p>Phù hợp với sinh viên, người đi làm và người tự học cần định hướng kỹ năng.</p></article>
+            </div>
+          </div>
+          <div class="screen">
+            <div class="tagrow">
+              <span class="tag">Onboarding AI</span><span class="tag">Mentor AI</span><span class="tag">Analyze</span><span class="tag">Explore</span><span class="tag">Quiz</span><span class="tag">History</span>
+            </div>
+            <div class="screen-top">
+              <div>
+                <div class="kicker">DUO MIND Learning Command Center</div>
+                <h3 style="margin-top:6px;">Một hành trình học tập có ngữ cảnh, có cấu trúc và có tiến trình</h3>
+              </div>
+              <span class="badge cyan">MVP hiện tại</span>
+            </div>
+            <div class="screen-row">
+              <div class="screen-box">
+                <h4>Mentor AI</h4>
+                <p>Tư vấn lộ trình học, kỹ năng còn thiếu và tín hiệu nghề nghiệp dựa trên hồ sơ người dùng.</p>
+                <ul><li>Thread riêng cho từng hướng hỏi</li><li>Có bộ nhớ và câu hỏi gợi ý</li><li>Bám mục tiêu học tập</li></ul>
+              </div>
+              <div class="screen-box">
+                <h4>Analyze + Explore</h4>
+                <p>Kiểm chứng nội dung sẵn có hoặc mở rộng chủ đề mới bằng summary, knowledge detail, mind map và quiz.</p>
+              </div>
+            </div>
+            <div class="hint">Dùng phim <strong>&larr;</strong> <strong>&rarr;</strong> hoặc các nút điều hướng để trình chiếu.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Problem">
+        <div class="inner">
+          <div class="eyebrow">01 | Problem</div>
+          <h2 class="title">Người học có quá nhiều thông tin, nhưng thiếu một hệ thống học tập thật sự cá nhân hóa.</h2>
+          <p class="lead">Pain point lớn nhất hiện nay không phải là thiếu nội dung. Vấn đề là khó biết cái gì đúng, cái gì phù hợp với mình và nên học theo trình tự nào để tạo ra tiến bộ thực sự.</p>
+          <div class="grid3" style="margin-top:24px;">
+            <article class="card"><div class="index">1</div><h4>Thông tin nhiều nhưng phân mảnh</h4><p>Người dùng phải di chuyển qua nhiều công cụ để tìm hiểu, ghi chú, kiểm tra, lưu trữ và ôn tập.</p></article>
+            <article class="card"><div class="index">2</div><h4>AI trả lời nhanh nhưng thiếu bối cảnh</h4><p>Phần lớn chatbot không hiểu rõ mục tiêu, nền tảng, phong cách học và quỹ thời gian của người dùng.</p></article>
+            <article class="card"><div class="index">3</div><h4>Thiếu vòng lặp học tập hoàn chỉnh</h4><p>Người học thường biết thêm một câu trả lời, nhưng không chuyển hóa được thành hiểu sâu và hành động tiếp theo.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Why Now">
+        <div class="inner split">
+          <div>
+            <div class="eyebrow">02 | Why Now</div>
+            <h2 class="title">Thời điểm để tái định nghĩa việc học cùng AI là ngay lúc này.</h2>
+            <p class="lead">AI đã trở thành hành vi phổ biến, nhưng phần lớn trải nghiệm vẫn chỉ dừng ở hỏi và trả lời. Khoảng trống của thị trường là biến AI thành môi trường học tập có cấu trúc và có định hướng.</p>
+          </div>
+          <div class="grid3" style="grid-template-columns:1fr;">
+            <article class="card"><h4>Hành vi học tập đang thay đổi</h4><p>Người dùng học nhanh, học theo nhu cầu và cần cá nhân hóa cao hơn trước.</p></article>
+            <article class="card"><h4>Nhu cầu upskill và reskill tăng mạnh</h4><p>Sinh viên và người đi làm đều cần một công cụ giúp rút ngắn khoảng cách giữa học và năng lực thực tế.</p></article>
+            <article class="card"><h4>Khoảng trống thị trường còn rõ</h4><p>Chatbot mạnh ở trả lời. LMS mạnh ở nội dung. Nhưng rất ít sản phẩm kết nối cá nhân hóa, kiểm chứng, ôn tập và tiến trình học tập trong một hệ.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Solution">
+        <div class="inner split">
+          <div>
+            <div class="eyebrow">03 | Solution</div>
+            <h2 class="title">DUO MIND biến AI từ công cụ trả lời thành hệ thống đồng hành học tập.</h2>
+            <p class="lead">Sản phẩm được thiết kế như một learning operating system: hiểu người học trước, hỗ trợ học trong quá trình và ghi nhận tiến bộ sau mỗi phiên để lần học tiếp theo thông minh hơn.</p>
+            <div class="panel" style="margin-top:20px;">
+              <div class="kicker">One-line Value Proposition</div>
+              <p style="font-size:22px; color:rgba(248,250,252,.9); margin-top:10px;">DUO MIND giúp người dùng học đúng thứ cần học, theo cách phù hợp nhất với chính họ.</p>
+            </div>
+          </div>
+          <div class="grid2">
+            <article class="card"><h4>Hiểu người học</h4><p>Onboarding AI phân loại persona, mục tiêu, phong cách học và quỹ thời gian.</p></article>
+            <article class="card"><h4>Định hướng rõ ràng</h4><p>Mentor AI trả lời bám hồ sơ cá nhân, lịch sử học và bối cảnh nghề nghiệp thực tế.</p></article>
+            <article class="card"><h4>Học sâu có cấu trúc</h4><p>Explore và Analyze tạo summary, knowledge detail, corrections, mind map và quiz trên cùng một flow.</p></article>
+            <article class="card"><h4>Giữ tiến bộ lâu dài</h4><p>History, bookmark, export và AI knowledge report giúp người dùng quay lại hiệu quả hơn.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Product Flow">
+        <div class="inner">
+          <div class="eyebrow">04 | Product Flow</div>
+          <h2 class="title">Một hành trình học tập liền mạch trong 5 bước.</h2>
+          <p class="lead">Thay vì chia rời việc học thành nhiều công cụ, DUO MIND kết nối các bước quan trọng thành một vòng lặp rõ ràng từ hiểu người học đến ghi nhận tiến bộ.</p>
+          <div class="timeline" style="margin-top:24px;">
+            <article class="card"><div class="kicker">Bước 1</div><h4>Onboarding AI</h4><p>Hiểu bối cảnh, mục tiêu, phong cách học và thời gian học mỗi ngày.</p></article>
+            <article class="card"><div class="kicker">Bước 2</div><h4>Mentor AI</h4><p>Định hướng kỹ năng, nghề nghiệp và bước tiếp theo theo đúng bối cảnh cá nhân.</p></article>
+            <article class="card"><div class="kicker">Bước 3</div><h4>Explore / Analyze</h4><p>Học chủ đề mới hoặc kiểm tra nội dung sẵn có bằng AI theo cách có cấu trúc.</p></article>
+            <article class="card"><div class="kicker">Bước 4</div><h4>Quiz & Feedback</h4><p>Trắc nghiệm, câu hỏi mở và phản hồi AI để chuyển từ đọc hiểu sang hiểu thật.</p></article>
+            <article class="card"><div class="kicker">Bước 5</div><h4>History & Report</h4><p>Lưu phiên học, bookmark, export và tổng hợp tiến bộ để học tiếp một cách liền mạch.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Core Modules">
+        <div class="inner">
+          <div class="eyebrow">05 | Core Modules</div>
+          <h2 class="title">Một hệ sinh thái học tập AI hoàn chỉnh.</h2>
+          <p class="lead">Giá trị của DUO MIND không nằm ở từng tính năng riêng lẻ mà ở cách các mô-đun liên kết với nhau thành một learning system thực sự.</p>
+          <div class="grid2" style="margin-top:24px;">
+            <article class="card"><h4>Onboarding & Profile</h4><p>Tạo persona AI, đề xuất chủ đề ưu tiên và điều chỉnh độ sâu nội dung theo bối cảnh cá nhân.</p></article>
+            <article class="card"><h4>Mentor AI</h4><p>Có thread riêng, suggested questions, memory và khả năng bám hồ sơ người dùng theo thời gian.</p></article>
+            <article class="card"><h4>Explore</h4><p>Nhập một prompt tự nhiên để nhận tổng quan, kiến thức chi tiết, mind map và quiz.</p></article>
+            <article class="card"><h4>Analyze</h4><p>Dán nội dung hoặc tải file để chấm độ chính xác, tóm tắt, đính chính và cấu trúc lại thông tin.</p></article>
+            <article class="card"><h4>Quiz & Open Feedback</h4><p>Tạo trắc nghiệm và câu hỏi mở để đánh giá cả khả năng ghi nhớ lẫn tư duy phản biện.</p></article>
+            <article class="card"><h4>History & Export</h4><p>Xem lại, bookmark, tải Word hoặc Markdown và tạo AI knowledge report theo thời gian.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Product Readiness">
+        <div class="inner">
+          <div class="eyebrow">06 | Product Readiness</div>
+          <h2 class="title">Sản phẩm không dừng ở ý tưởng. Core experience đã hiện diện trong MVP.</h2>
+          <p class="lead">Điểm mạnh hiện tại là DUO MIND đã có một nền tảng sản phẩm đủ rõ để thử nghiệm hành vi người dùng, tối ưu retention và chuẩn bị cho giai đoạn pilot thực tế.</p>
+          <div class="grid3" style="margin-top:24px;">
+            <article class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;"><h4>Learning Core</h4><span class="badge green">Ready</span></div><p>Explore, Analyze, Quiz và Mind Map đã tạo thành vòng lặp học tập cấp phiên.</p><ul><li>Summary và key points</li><li>Knowledge detail có cấu trúc</li><li>Corrections và accuracy check</li></ul></article>
+            <article class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;"><h4>Personalization Layer</h4><span class="badge green">Ready</span></div><p>Onboarding, hồ sơ học tập và Mentor AI đã bám được bối cảnh cá nhân của người dùng.</p><ul><li>Persona AI</li><li>Suggested questions</li><li>Memory + thread history</li></ul></article>
+            <article class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;"><h4>Retention Layer</h4><span class="badge amber">Growing</span></div><p>History, bookmark, export và knowledge report tạo nền để giữ người dùng quay lại.</p><ul><li>Session archive</li><li>Export Word / Markdown</li><li>AI report theo thời gian</li></ul></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Differentiation">
+        <div class="inner">
+          <div class="eyebrow">07 | Differentiation</div>
+          <h2 class="title">Không chỉ là chatbot. Không chỉ là nền tảng học online.</h2>
+          <p class="lead">DUO MIND khác biệt ở chỗ kết nối cá nhân hóa, học sâu, kiểm chứng kiến thức, ôn tập và lưu tiến trình trong cùng một trải nghiệm duy nhất.</p>
+          <div class="grid3" style="margin-top:24px;">
+            <article class="card"><div class="index">A</div><h4>Chatbot AI</h4><p>Mạnh ở trả lời nhanh nhưng thiếu tiến trình học tập, thiếu lưu trữ có cấu trúc và thiếu cơ chế quay lại học tiếp.</p></article>
+            <article class="card"><div class="index">B</div><h4>LMS truyền thống</h4><p>Mạnh ở kho nội dung nhưng cá nhân hóa thấp và phản hồi chưa đủ linh hoạt theo ngữ cảnh từng người học.</p></article>
+            <article class="card"><div class="index">C</div><h4>DUO MIND</h4><p>Kết nối onboarding, mentor, learn, quiz, history và report thành một learning operating system cá nhân hóa.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Customers & Revenue">
+        <div class="inner split">
+          <div>
+            <div class="eyebrow">08 | Customers & Revenue</div>
+            <h2 class="title">Bắt đầu từ người học cá nhân, mở rộng sang tổ chức giáo dục và đào tạo.</h2>
+            <p class="lead">Sản phẩm phù hợp với cả mô hình B2C và B2B2C vì nhu cầu cá nhân hóa học tập đang xuất hiện đồng thời ở người dùng cuối và ở các đơn vị đào tạo.</p>
+          </div>
+          <div class="grid2">
+            <article class="card"><div class="index">A</div><h4>Khách hàng mục tiêu</h4><ul><li><strong>Sinh viên:</strong> cần định hướng nghề nghiệp và kỹ năng.</li><li><strong>Người đi làm:</strong> cần upskill, reskill hoặc chuyển hướng.</li><li><strong>Tổ chức đào tạo:</strong> cần lớp cá nhân hóa và phản hồi AI cho người học.</li></ul></article>
+            <article class="card"><div class="index">B</div><h4>Mô hình doanh thu</h4><ul><li><strong>Freemium:</strong> trải nghiệm cơ bản để tăng adoption.</li><li><strong>Premium:</strong> mentor sâu hơn, nhiều phiên hơn, báo cáo nâng cao.</li><li><strong>Institutional Plan:</strong> gói cho trường học, trung tâm và doanh nghiệp đào tạo.</li></ul></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Go To Market">
+        <div class="inner">
+          <div class="eyebrow">09 | Go To Market</div>
+          <h2 class="title">Chiến lược tiếp cận thị trường theo lộ trình hẹp trước, sâu trước, rồi mới mở rộng.</h2>
+          <p class="lead">Ưu tiên đầu tiên không phải là mở rộng quá nhanh, mà là tạo ra một use case đủ rõ và retention đủ tốt trong một nhóm người dùng mục tiêu cụ thể.</p>
+          <div class="grid3" style="margin-top:24px;">
+            <article class="card"><div class="index">1</div><h4>Nhóm khởi đầu</h4><p>Sinh viên và người đi làm trẻ đang cần định hướng kỹ năng, nghề nghiệp và một cách học cá nhân hóa hơn.</p></article>
+            <article class="card"><div class="index">2</div><h4>Kênh tiếp cận</h4><p>Community học tập, trường đại học, câu lạc bộ nghề nghiệp, workshop hướng nghiệp và các mô hình pilot.</p></article>
+            <article class="card"><div class="index">3</div><h4>Điểm kích hoạt quay lại</h4><p>Mentor AI theo hồ sơ, history có giá trị, quiz phản hồi và knowledge report giúp người dùng có lý do quay lại.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Roadmap">
+        <div class="inner">
+          <div class="eyebrow">10 | Roadmap</div>
+          <h2 class="title">Lộ trình phát triển từ learning tool sang nền tảng học tập thông minh.</h2>
+          <p class="lead">Mục tiêu không chỉ là hoàn thiện một bộ tính năng AI, mà là xây dựng lớp hạ tầng học tập có thể mở rộng từ cá nhân sang tổ chức.</p>
+          <div class="roadmap" style="margin-top:24px;">
+            <article class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;"><h4>Giai đoạn 1</h4><span class="badge green">Now</span></div><p>Tối ưu core loop học tập cá nhân.</p><ul><li>Onboarding AI</li><li>Mentor AI</li><li>Explore / Analyze / Quiz / History</li><li>Retention qua session archive và report</li></ul></article>
+            <article class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;"><h4>Giai đoạn 2</h4><span class="badge amber">Next</span></div><p>Tăng chiều sâu trải nghiệm và tính ứng dụng thực tế.</p><ul><li>Dashboard tiến bộ nâng cao</li><li>Topic library và guided learning paths</li><li>Mobile-first experience</li><li>Explainability và citation tốt hơn</li></ul></article>
+            <article class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;"><h4>Giai đoạn 3</h4><span class="badge amber">Scale</span></div><p>Mở rộng sang trường học, trung tâm và doanh nghiệp.</p><ul><li>Admin / teacher / institution dashboard</li><li>Group learning và cohort learning</li><li>Analytics cấp tổ chức</li><li>B2B2C deployment</li></ul></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Why DUO MIND Wins">
+        <div class="inner split">
+          <div>
+            <div class="eyebrow">11 | Why DUO MIND Wins</div>
+            <h2 class="title">DUO MIND có cơ hội thắng vì giải đúng một khoảng trống rất rõ.</h2>
+            <p class="lead">Khoảng trống đó là một hệ học tập AI thực sự bám người học, giúp người dùng không chỉ biết thêm mà còn tiến bộ thật.</p>
+          </div>
+          <div class="grid3" style="grid-template-columns:1fr;">
+            <article class="card"><div class="index">I</div><h4>Kết hợp giáo dục và định hướng nghề nghiệp</h4><p>Không tách việc học khỏi ứng dụng thực tế. Điều này tạo ra use case mạnh hơn cho sinh viên và người đi làm.</p></article>
+            <article class="card"><div class="index">II</div><h4>Thiết kế theo vòng lặp học tập</h4><p>Giá trị đến từ chuỗi hành vi liên tục: hiểu người học, học, kiểm tra, lưu lại và học tiếp.</p></article>
+            <article class="card"><div class="index">III</div><h4>Có nền sản phẩm đủ rõ để pilot</h4><p>Đây là lợi thế quan trọng để tối ưu retention, positioning và chuẩn hóa mô hình doanh thu từ dữ liệu thực.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" data-title="Closing">
+        <div class="inner split">
+          <div>
+            <div class="eyebrow">12 | Closing</div>
+            <h2 class="title">DUO MIND đang xây dựng lớp hạ tầng học tập AI cho thế hệ người học mới.</h2>
+            <p class="lead">Tương lai của giáo dục không chỉ là có nhiều nội dung hơn, mà là có một hệ đủ thông minh để đưa đúng nội dung, đúng cách học và đúng bước tiếp theo cho từng người.</p>
+            <div class="panel" style="margin-top:20px;">
+              <h4 style="margin-bottom:10px;">Đề xuất hợp tác</h4>
+              <ul><li>Triển khai pilot với trường học, trung tâm đào tạo và cộng đồng học tập.</li><li>Mở rộng sản phẩm từ MVP cá nhân hóa sang nền tảng có thể scale.</li><li>Xây dựng DUO MIND thành learning companion đáng tin cậy cho sinh viên và người đi làm.</li></ul>
+            </div>
+          </div>
+          <div class="screen" style="background:linear-gradient(145deg, rgba(103,232,249,.12), rgba(253,230,138,.1));">
+            <h3 style="font-size:32px; line-height:1.45; letter-spacing:-.02em;">"DUO MIND giúp AI không chỉ trả lời, mà thật sự dẫn đường cho việc học."</h3>
+            <p class="hint" style="margin-top:18px;">DUO MIND | Personalized AI Learning Platform</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script>
+      const slides = [...document.querySelectorAll(".slide")];
+      const deck = document.getElementById("deck");
+      const dotsWrap = document.getElementById("dots");
+      const bar = document.getElementById("bar");
+      const counter = document.getElementById("counter");
+      const title = document.getElementById("title");
+      const prev = document.getElementById("prev");
+      const next = document.getElementById("next");
+      let current = 0;
+
+      slides.forEach((_, i) => {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.setAttribute("aria-label", `Đi tới slide ${i + 1}`);
+        dot.addEventListener("click", () => go(i));
+        dotsWrap.appendChild(dot);
+      });
+
+      const dots = [...dotsWrap.querySelectorAll("button")];
+
+      function update(i) {
+        current = i;
+        counter.textContent = `Slide ${i + 1} / ${slides.length}`;
+        title.textContent = slides[i].dataset.title || `Slide ${i + 1}`;
+        bar.style.width = `${((i + 1) / slides.length) * 100}%`;
+        dots.forEach((dot, idx) => dot.classList.toggle("active", idx === i));
+        prev.disabled = i === 0;
+        next.disabled = i === slides.length - 1;
+      }
+
+      function go(i) {
+        const idx = Math.max(0, Math.min(i, slides.length - 1));
+        slides[idx].scrollIntoView({ behavior: "smooth", block: "start" });
+        update(idx);
+      }
+
+      prev.addEventListener("click", () => go(current - 1));
+      next.addEventListener("click", () => go(current + 1));
+
+      document.addEventListener("keydown", (e) => {
+        if (["ArrowRight", "PageDown", " "].includes(e.key)) {
+          e.preventDefault();
+          go(current + 1);
+        }
+        if (["ArrowLeft", "PageUp"].includes(e.key)) {
+          e.preventDefault();
+          go(current - 1);
+        }
+        if (e.key === "Home") {
+          e.preventDefault();
+          go(0);
+        }
+        if (e.key === "End") {
+          e.preventDefault();
+          go(slides.length - 1);
+        }
+      });
+
+      const observer = new IntersectionObserver((entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) {
+          const idx = slides.indexOf(visible.target);
+          if (idx >= 0) update(idx);
+        }
+      }, { root: deck, threshold: [0.35, 0.6, 0.8] });
+
+      slides.forEach((slide) => observer.observe(slide));
+      update(0);
+    </script>
+  </body>
+</html>

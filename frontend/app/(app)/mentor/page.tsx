@@ -2,10 +2,7 @@
 
 import {
   Bot,
-  BriefcaseBusiness,
-  GraduationCap,
   Lightbulb,
-  Link2,
   MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,9 +13,12 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import Link from "next/link"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 
+import { MentorResponsePanels } from "@/components/mentor/MentorResponsePanels"
+import { GOAL_OPTIONS, getOptionLabel } from "@/components/onboarding/options"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,9 +33,11 @@ import {
   getMentorThreads,
   sendMentorMessage,
 } from "@/lib/api/mentor"
+import { getMyOnboarding } from "@/lib/api/onboarding"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { buildProfileReadiness } from "@/lib/learning-roadmap"
 import { cn } from "@/lib/utils"
-import type { MentorMessageItem, MentorThreadSummary } from "@/types"
+import type { MentorMessageItem, MentorThreadSummary, OnboardingData } from "@/types"
 
 export default function MentorPage() {
   const searchParams = useSearchParams()
@@ -44,6 +46,7 @@ export default function MentorPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MentorMessageItem[]>([])
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
+  const [onboarding, setOnboarding] = useState<Partial<OnboardingData> | null>(null)
   const [input, setInput] = useState("")
   const [loadingThreads, setLoadingThreads] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -57,6 +60,10 @@ export default function MentorPage() {
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
     [selectedThreadId, threads]
+  )
+  const profileReadiness = useMemo(
+    () => buildProfileReadiness(onboarding),
+    [onboarding]
   )
   const pendingMessage = useMemo<MentorMessageItem | null>(() => {
     if (!sending || !pendingOutboundMessage?.trim()) {
@@ -82,9 +89,10 @@ export default function MentorPage() {
 
     async function bootstrap() {
       try {
-        const [threadData, questionData] = await Promise.all([
+        const [threadData, questionData, onboardingData] = await Promise.all([
           getMentorThreads(),
           getMentorSuggestedQuestions(),
+          getMyOnboarding(),
         ])
 
         if (!mounted) {
@@ -93,6 +101,7 @@ export default function MentorPage() {
 
         setThreads(threadData)
         setSuggestedQuestions(questionData.questions)
+        setOnboarding(onboardingData)
 
         if (threadData.length) {
           const firstThreadId = threadData[0].id
@@ -127,6 +136,15 @@ export default function MentorPage() {
 
     setInput((previous) => previous || question)
   }, [searchParams])
+
+  useEffect(() => {
+    if (!onboarding) {
+      return
+    }
+    if (profileReadiness.missingItems.length) {
+      setShowInsightPanel(true)
+    }
+  }, [onboarding, profileReadiness.missingItems.length])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -232,6 +250,21 @@ export default function MentorPage() {
         </div>
       </section>
 
+      {onboarding && profileReadiness.missingItems.length ? (
+        <Alert>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Mentor đã có thể trả lời, nhưng hồ sơ của bạn vẫn thiếu{" "}
+              {profileReadiness.missingItems.slice(0, 3).join(", ")}. Bổ sung các mục này để
+              câu trả lời khóa ưu tiên sát hơn.
+            </span>
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href="/profile">Bổ sung hồ sơ</Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -255,6 +288,12 @@ export default function MentorPage() {
               <Button size="sm" variant="outline" onClick={handleCreateThread} disabled={creatingThread}>
                 <Plus className="mr-2 size-4" />
                 Phiên mới
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/roadmap">
+                  <TrendingUp className="mr-2 size-4" />
+                  Lộ trình
+                </Link>
               </Button>
               <Button
                 type="button"
@@ -361,6 +400,57 @@ export default function MentorPage() {
                     </Button>
                   </div>
 
+                  {onboarding ? (
+                    <div className="grid gap-2 rounded-xl border border-border/70 bg-white/90 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Mục tiêu
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-foreground">
+                          {onboarding.target_role || "Chưa chốt rõ"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Quỹ học
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-foreground">
+                          {onboarding.daily_study_minutes
+                            ? `${onboarding.daily_study_minutes} phút/ngày`
+                            : "Chưa rõ"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Trọng tâm
+                        </div>
+                        <div className="mt-1 text-sm font-medium text-foreground">
+                          {getOptionLabel(onboarding.learning_goals?.[0], GOAL_OPTIONS)}
+                        </div>
+                      </div>
+                      {onboarding.desired_outcome ? (
+                        <div>
+                          <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                            Đầu ra
+                          </div>
+                          <div className="mt-1 text-sm font-medium text-foreground">
+                            {onboarding.desired_outcome}
+                          </div>
+                        </div>
+                      ) : null}
+                      {onboarding.current_challenges ? (
+                        <div className="sm:col-span-2 xl:col-span-2">
+                          <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                            Khó khăn hiện tại
+                          </div>
+                          <div className="mt-1 text-sm font-medium text-foreground">
+                            {onboarding.current_challenges}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <Tabs defaultValue="questions" className="gap-2">
                     <TabsList className="h-9 w-fit rounded-xl bg-background/85 p-1" variant="default">
                       <TabsTrigger value="questions" className="rounded-lg px-3 text-xs sm:text-sm">
@@ -453,13 +543,13 @@ export default function MentorPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-border/70 p-6">
-            <div className="space-y-3">
+          <div className="border-t border-border/70 bg-background/92 px-5 py-4">
+            <div className="space-y-2.5">
               <Textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Ví dụ: Tôi đang học ngành Tài chính, muốn theo Data Analyst thì nên học gì trước và thị trường đang yêu cầu những kỹ năng nào?"
-                className="min-h-[150px] resize-none border-primary/15 bg-background text-base leading-7"
+                className="min-h-[88px] resize-none border-primary/15 bg-background text-[15px] leading-6 shadow-none sm:min-h-[96px]"
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && event.ctrlKey) {
                     event.preventDefault()
@@ -467,14 +557,15 @@ export default function MentorPage() {
                   }
                 }}
               />
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground sm:text-sm">
                   Mẹo: nhấn <span className="font-medium text-foreground">Ctrl + Enter</span> để gửi nhanh.
                 </p>
                 <Button
                   onClick={() => void handleSendMessage()}
                   disabled={!input.trim() || sending}
-                  className="bg-primary hover:bg-primary/90"
+                  size="sm"
+                  className="h-10 rounded-full bg-primary px-4 hover:bg-primary/90"
                 >
                   {sending ? "Mentor đang phân tích..." : "Gửi câu hỏi"}
                   <Send className="ml-2 size-4" />
@@ -513,115 +604,8 @@ function MessageCard({
         </div>
 
         {!isUser && payload ? (
-          <div className="mt-4 space-y-4 border-t border-border/70 pt-4">
-            {payload.career_paths?.length ? (
-              <InsightSection
-                title="Hướng nghề gợi ý"
-                icon={<BriefcaseBusiness className="size-4" />}
-                items={payload.career_paths.map(
-                  (item) => `${item.role}: ${item.fit_reason} | Bước tiếp: ${item.next_step}`
-                )}
-              />
-            ) : null}
-
-            {payload.skill_gaps?.length ? (
-              <InsightSection
-                title="Kỹ năng nên ưu tiên"
-                icon={<GraduationCap className="size-4" />}
-                items={payload.skill_gaps.map((item) => `${item.skill}: ${item.suggested_action}`)}
-              />
-            ) : null}
-
-            {payload.recommended_learning_steps?.length ? (
-              <InsightSection
-                title="Bước học tiếp"
-                icon={<Lightbulb className="size-4" />}
-                items={payload.recommended_learning_steps}
-              />
-            ) : null}
-
-            {payload.market_signals?.length ? (
-              <InsightSection
-                title="Tín hiệu thị trường"
-                icon={<TrendingUp className="size-4" />}
-                items={payload.market_signals.map(
-                  (item) => `${item.role_name}: ${item.demand_summary}`
-                )}
-              />
-            ) : null}
-
-            {payload.sources?.length ? (
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
-                  Nguồn tham khảo
-                </p>
-                <div className="space-y-2">
-                  {payload.sources.map((source) => (
-                    <a
-                      key={`${source.label}-${source.url}`}
-                      href={source.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 rounded-2xl border border-border/70 bg-muted/20 px-3 py-2.5 text-sm leading-6 text-foreground/80 transition-colors hover:border-primary/30 hover:bg-primary/5"
-                    >
-                      <Link2 className="size-4 text-primary" />
-                      <span className="line-clamp-2">{source.label}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {payload.suggested_followups?.length ? (
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
-                  Gợi ý hỏi tiếp
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {payload.suggested_followups.map((question) => (
-                    <button
-                      key={question}
-                      type="button"
-                      onClick={() => onFollowup(question)}
-                      className="rounded-full border border-border/70 bg-background px-3 py-1.5 text-xs text-foreground/80 transition-colors hover:border-primary/30 hover:bg-primary/5"
-                    >
-                      {question}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
+          <MentorResponsePanels payload={payload} onFollowup={onFollowup} />
         ) : null}
-      </div>
-    </div>
-  )
-}
-
-function InsightSection({
-  title,
-  icon,
-  items,
-}: {
-  title: string
-  icon: ReactNode
-  items: string[]
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-primary">
-        {icon}
-        {title}
-      </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div
-            key={item}
-            className="rounded-2xl border border-border/70 bg-muted/20 px-3 py-2.5 text-[15px] leading-7 text-foreground/82"
-          >
-            {item}
-          </div>
-        ))}
       </div>
     </div>
   )

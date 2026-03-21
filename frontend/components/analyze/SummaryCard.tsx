@@ -1,15 +1,34 @@
 import { ListChecks, ScrollText } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { extractSummaryBullets } from "@/lib/summary-bullets"
+import {
+  getAnalyzeOverviewBullets,
+  getAnalyzeTakeawayBullets,
+} from "@/lib/generated-content"
+import type { KnowledgeDetailData } from "@/types"
 
 interface SummaryCardProps {
   summary: string
   keyPoints: string[]
+  knowledgeDetailData?: KnowledgeDetailData
 }
 
-export function SummaryCard({ summary, keyPoints }: SummaryCardProps) {
-  const summaryBullets = extractSummaryBullets(summary, keyPoints, 5)
+export function SummaryCard({
+  summary,
+  keyPoints,
+  knowledgeDetailData,
+}: SummaryCardProps) {
+  const summaryBullets = getAnalyzeOverviewBullets(
+    summary,
+    keyPoints,
+    knowledgeDetailData,
+    5
+  )
+  const rightColumnBullets = getAnalyzeTakeawayBullets(
+    keyPoints,
+    knowledgeDetailData,
+    5
+  )
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[1fr_1fr]">
@@ -46,7 +65,7 @@ export function SummaryCard({ summary, keyPoints }: SummaryCardProps) {
         </CardHeader>
         <CardContent>
           <ul className="space-y-3">
-            {keyPoints.map((point, index) => (
+            {rightColumnBullets.map((point, index) => (
               <li
                 key={`${point}-${index}`}
                 className="rounded-2xl border border-border/70 bg-background/75 px-4 py-3 text-sm leading-6 text-foreground/85"

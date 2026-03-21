@@ -5,6 +5,7 @@ import {
   Compass,
   History,
   MessagesSquare,
+  Route,
   Telescope,
 } from "lucide-react"
 import Link from "next/link"
@@ -20,6 +21,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  buildCareerFocus,
+  buildContextSnapshot,
+  buildMentorLearningPath,
+  buildMiniRoadmap,
+  buildProfileReadiness,
+  buildReadinessSnapshot,
+  type DashboardAnalytics,
+  type DashboardOnboarding,
+} from "@/lib/learning-roadmap"
+import { mergeOnboardingWithMemories } from "@/lib/onboarding-context"
 import { createClient } from "@/lib/supabase/server"
 
 const quickActions = [
@@ -27,31 +39,38 @@ const quickActions = [
     href: "/mentor",
     title: "Mentor AI",
     description:
-      "Nhận tư vấn hướng nghiệp, kỹ năng còn thiếu và lộ trình học tập dựa trên hồ sơ của bạn.",
+      "Xác định khoảng trống kỹ năng, hỏi lộ trình học và chốt bước tiếp theo theo đúng mục tiêu nghề nghiệp của bạn.",
     icon: MessagesSquare,
+  },
+  {
+    href: "/roadmap",
+    title: "Lộ trình",
+    description:
+      "Xem lộ trình 14 ngày, khoảng trống kỹ năng hiện tại và các bước cần làm để tiến gần hơn tới vai trò mục tiêu.",
+    icon: Route,
   },
   {
     href: "/explore",
     title: "Khám phá chủ đề",
     description:
-      "Học sâu một chủ đề mới với phần kiến thức chi tiết, ví dụ theo persona và mind map tổng quan.",
+      "Học sâu một chủ đề ưu tiên để bổ sung đúng phần kiến thức bạn đang cần cho mục tiêu hiện tại.",
     icon: Telescope,
   },
   {
     href: "/analyze",
     title: "Phân tích kiến thức",
     description:
-      "Tải nội dung của bạn lên để chấm độ chính xác, sửa lỗi và cấu trúc lại thành bản học dễ hiểu.",
+      "Dùng với note, bài học hoặc tài liệu của bạn để chốt lại phần đúng, phần sai và phần cần bổ sung.",
     icon: BrainCircuit,
   },
   {
     href: "/history",
     title: "Lịch sử học tập",
     description:
-      "Xem lại các phiên gần đây, mở lại kết quả cũ và theo dõi tiến trình học tập của bạn.",
+      "Xem lại các phiên học, nhận ra mình đã học đến đâu và những chủ đề nào nên quay lại tiếp tục.",
     icon: History,
   },
-]
+] as const
 
 export default async function DashboardPage() {
   const supabase = createClient()
@@ -63,23 +82,46 @@ export default async function DashboardPage() {
     redirect("/login")
   }
 
-  const [profileResponse, onboardingResponse, sessionsResponse] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
-    supabase.from("user_onboarding").select("*").eq("user_id", user.id).maybeSingle(),
-    supabase
-      .from("learning_sessions")
-      .select("id, title, session_type, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(4),
-  ])
+  const [profileResponse, onboardingResponse, sessionsResponse, analyticsResponse, mentorMemoryResponse] =
+    await Promise.all([
+      supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+      supabase.from("user_onboarding").select("*").eq("user_id", user.id).maybeSingle(),
+      supabase
+        .from("learning_sessions")
+        .select("id, title, session_type, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(4),
+      supabase
+        .from("knowledge_analytics")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("mentor_memory")
+        .select("memory_key,memory_value")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(8),
+    ])
 
   const profile = profileResponse.data
-  const onboarding = onboardingResponse.data
+  const onboarding = mergeOnboardingWithMemories(
+    onboardingResponse.data as DashboardOnboarding | null,
+    mentorMemoryResponse.data ?? []
+  ) as DashboardOnboarding | null
+  const analytics = analyticsResponse.data as DashboardAnalytics | null
   const recentSessions = sessionsResponse.data ?? []
   const displayName =
     profile?.full_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "bạn"
+  const careerFocus = buildCareerFocus(onboarding)
   const mentorPath = buildMentorLearningPath(onboarding)
+  const miniRoadmap = buildMiniRoadmap(onboarding)
+  const readiness = buildReadinessSnapshot(onboarding, analytics, recentSessions.length)
+  const contextSnapshot = buildContextSnapshot(onboarding)
+  const profileReadiness = buildProfileReadiness(onboarding)
 
   return (
     <div className="space-y-6">
@@ -90,19 +132,25 @@ export default async function DashboardPage() {
 
           <div className="max-w-4xl space-y-3">
             <h1 className="font-display text-4xl font-semibold leading-tight text-balance">
-              Xin chào {displayName}, hôm nay bạn muốn học sâu hơn hay định hướng rõ hơn?
+              Xin chào {displayName}, mục tiêu hiện tại của bạn là {careerFocus.targetRole}.
             </h1>
             <p className="text-sm leading-7 text-foreground/76 sm:text-base">
-              Từ đây bạn có thể mở Mentor AI để nhận tư vấn cá nhân hóa, khám phá sâu một chủ đề mới
-              hoặc quay lại các phiên học gần nhất.
+              Hôm nay bạn nên ưu tiên {careerFocus.primaryTopic}. Mentor, Khám phá, Phân tích và lộ
+              trình bên dưới đã được neo theo hướng đi này để bạn học đúng trọng tâm hơn.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/mentor">
-                Mở Mentor AI
+              <Link href={careerFocus.nextActionHref}>
+                {careerFocus.nextActionLabel}
                 <ArrowRight className="ml-2 size-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/roadmap">
+                Xem lộ trình
+                <Route className="ml-2 size-4" />
               </Link>
             </Button>
             <DashboardIntroGuide
@@ -111,11 +159,184 @@ export default async function DashboardPage() {
               showInitially={profile?.has_seen_intro_tour !== true}
             />
           </div>
-
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border border-border/70 bg-card/92">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Compass className="size-5 text-primary" />
+              Hướng tập trung hiện tại
+            </CardTitle>
+            <CardDescription>{careerFocus.focusSummary}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4 text-sm leading-7 text-foreground/78">
+              {careerFocus.focusDetail}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/70 bg-card/92">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookCopy className="size-5 text-primary" />
+              Hành động nên làm ngay
+            </CardTitle>
+            <CardDescription>{careerFocus.nextActionSummary}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-xl text-sm leading-7 text-foreground/78">
+              {careerFocus.nextActionDetail}
+            </p>
+            <Button asChild>
+              <Link href={careerFocus.nextActionHref}>
+                Thực hiện ngay
+                <ArrowRight className="ml-2 size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {contextSnapshot.length ? (
+        <Card className="border border-border/70 bg-card/92">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Compass className="size-5 text-primary" />
+              Bối cảnh hiện tại
+            </CardTitle>
+            <CardDescription>
+              Đây là lớp dữ liệu giúp DUO MIND hiểu đúng hoàn cảnh thật của bạn, thay vì chỉ bám vào
+              vai trò mục tiêu.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {contextSnapshot.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-[1.5rem] border border-border/70 bg-background/80 p-4"
+              >
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  {item.label}
+                </div>
+                <div className="mt-3 font-medium leading-7 text-foreground">{item.value}</div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="border border-border/70 bg-card/92">
+        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <CardTitle>Độ đầy hồ sơ học tập</CardTitle>
+            <CardDescription>{profileReadiness.label}</CardDescription>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/profile">
+              Cập nhật hồ sơ
+              <ArrowRight className="ml-2 size-4" />
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-medium text-foreground">Mức sẵn sàng dữ liệu</div>
+              <Badge variant="secondary">{profileReadiness.score}/100</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-7 text-foreground/78">{profileReadiness.summary}</p>
+          </div>
+
+          {profileReadiness.missingItems.length ? (
+            <div className="flex flex-wrap gap-2">
+              {profileReadiness.missingItems.map((item) => (
+                <Badge key={item} variant="outline" className="rounded-full">
+                  Thiếu: {item}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
+              Hồ sơ hiện tại đã đủ rõ để mentor đi thẳng vào khoảng trống kỹ năng và hành động tiếp theo.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="border border-border/70 bg-card/92">
+          <CardHeader>
+            <CardTitle className="text-lg">Mức sẵn sàng hiện tại</CardTitle>
+            <CardDescription>{readiness.level}</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm leading-7 text-foreground/78">
+            {readiness.summary}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/70 bg-card/92">
+          <CardHeader>
+            <CardTitle className="text-lg">Điểm mạnh hiện có</CardTitle>
+            <CardDescription>{readiness.strongestLabel}</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm leading-7 text-foreground/78">
+            {readiness.strongestDetail}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/70 bg-card/92">
+          <CardHeader>
+            <CardTitle className="text-lg">Khoảng trống ưu tiên</CardTitle>
+            <CardDescription>{readiness.gapLabel}</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm leading-7 text-foreground/78">
+            {readiness.gapDetail}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border border-border/70 bg-card/92">
+        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-1">
+            <CardTitle>Lộ trình mini 14 ngày</CardTitle>
+            <CardDescription>
+              Khối này giúp bạn thấy ngay thứ tự hành động trước khi mở sang lộ trình đầy đủ.
+            </CardDescription>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/roadmap">
+              Mở lộ trình chi tiết
+              <ArrowRight className="ml-2 size-4" />
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-3">
+          {miniRoadmap.map((item, index) => (
+            <div
+              key={item.title}
+              className="rounded-[1.5rem] border border-border/70 bg-background/80 p-4"
+            >
+              <Badge variant="secondary">Chặng {index + 1}</Badge>
+              <div className="mt-4 space-y-2">
+                <div className="font-display text-xl font-semibold">{item.title}</div>
+                <p className="text-sm leading-7 text-foreground/78">{item.description}</p>
+                <Button asChild variant="outline" className="mt-2">
+                  <Link href={item.href}>
+                    {item.cta}
+                    <ArrowRight className="ml-2 size-4" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-5">
         {quickActions.map((item) => {
           const Icon = item.icon
           return (
@@ -145,11 +366,11 @@ export default async function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Compass className="size-5 text-primary" />
-              Mentor AI learning path
+              Hành trình học cùng Mentor AI
             </CardTitle>
             <CardDescription>
-              Đây là lộ trình khởi động nhanh để mentor, khám phá chủ đề và phần học tập của bạn nối
-              với nhau mượt hơn.
+              Luồng này giúp bạn nối mục tiêu nghề nghiệp với phiên mentor, phần học ưu tiên và phần
+              củng cố kiến thức.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 lg:grid-cols-3">
@@ -168,7 +389,9 @@ export default async function DashboardPage() {
                     </div>
                   </div>
                   <div className="mt-4 space-y-2">
-                    <div className="font-display text-xl font-semibold text-foreground">{item.title}</div>
+                    <div className="font-display text-xl font-semibold text-foreground">
+                      {item.title}
+                    </div>
                     <p className="text-sm leading-7 text-foreground/78">{item.description}</p>
                   </div>
                 </Link>
@@ -214,44 +437,4 @@ export default async function DashboardPage() {
       </div>
     </div>
   )
-}
-
-function buildMentorLearningPath(
-  onboarding:
-    | {
-        ai_recommended_topics?: string[] | null
-        learning_goals?: string[] | null
-        daily_study_minutes?: number | null
-      }
-    | null
-    | undefined
-) {
-  const topTopic = onboarding?.ai_recommended_topics?.[0] || "chủ đề quan trọng nhất lúc này"
-  const secondTopic = onboarding?.ai_recommended_topics?.[1] || "một kỹ năng ứng dụng gần mục tiêu của bạn"
-  const studyWindow = onboarding?.daily_study_minutes ? `${onboarding.daily_study_minutes} phút mỗi ngày` : "quỹ thời gian hiện tại"
-  const primaryGoal = onboarding?.learning_goals?.[0] || "mục tiêu học tập hiện tại"
-
-  return [
-    {
-      title: "Chốt hướng với mentor",
-      description: `Bắt đầu bằng một câu hỏi nghề nghiệp hoặc roadmap để mentor bám vào ${primaryGoal} và hồ sơ cá nhân của bạn.`,
-      href: "/mentor",
-      icon: MessagesSquare,
-      accent: "from-emerald-500/18 to-teal-500/8",
-    },
-    {
-      title: "Đi sâu chủ đề ưu tiên",
-      description: `Khám phá sâu ${topTopic} trước, sau đó nối sang ${secondTopic} để hiểu rõ phần kiến thức có ích nhất.`,
-      href: "/explore",
-      icon: Telescope,
-      accent: "from-amber-500/18 to-orange-500/8",
-    },
-    {
-      title: "Củng cố và thực hành",
-      description: `Dùng Phân tích để rà lại hiểu biết và giữ tiến độ học đều theo ${studyWindow} mà không bị lan man.`,
-      href: "/analyze",
-      icon: BookCopy,
-      accent: "from-violet-500/18 to-fuchsia-500/8",
-    },
-  ]
 }

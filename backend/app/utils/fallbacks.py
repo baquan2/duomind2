@@ -305,7 +305,7 @@ def build_explore_fallback(prompt: str) -> dict[str, Any]:
                     title,
                     "cơ chế vận hành",
                     f"Phần này cần chỉ ra trình tự hoặc nguyên lý bên trong: đầu vào là gì, quá trình xử lý diễn ra ra sao, và đầu ra có ý nghĩa gì.",
-                    "Khi hiểu được cơ chế, người học sẽ không còn phụ thuộc vào việc học thuộc lòng mà có thể tự suy luận khi gặp ví dụ mới.",
+                    "Khi hiểu được cơ chế, bạn sẽ dễ kiểm tra ví dụ mới thay vì chỉ nhớ định nghĩa rời rạc.",
                 ),
             },
             "components_and_relationships": {
@@ -318,11 +318,10 @@ def build_explore_fallback(prompt: str) -> dict[str, Any]:
                 ),
             },
             "persona_based_example": {
-                "title": "Ví dụ trực quan theo đúng persona",
+                "title": "Ví dụ trực quan",
                 "content": (
-                    f"Để học sâu {title}, ví dụ nên bám sát bối cảnh thực tế của người học. "
-                    f"Nếu người học thiên về ứng dụng, nên dùng một dự án nhỏ, quy trình công việc, hoặc trường hợp thường gặp để mô tả chủ đề. "
-                    f"Nếu người học thiên về trực quan, nên diễn giải bằng phép so sánh, sơ đồ tư duy, hoặc một tình huống có trình tự rõ ràng để họ dễ hình dung."
+                    f"Với {title}, nên dùng một ví dụ đời thường hoặc tình huống công việc ngắn để thấy rõ cơ chế đang diễn ra. "
+                    "Ví dụ càng cụ thể thì càng dễ nhìn ra bản chất, điểm khác biệt và nơi chủ đề này được dùng thật."
                 ),
             },
             "real_world_applications": {
@@ -341,11 +340,10 @@ def build_explore_fallback(prompt: str) -> dict[str, Any]:
                 ),
             },
             "next_step_self_study": {
-                "title": "Cách tự học tiếp trong 1 buổi ngắn",
+                "title": "Điểm cần nắm tiếp",
                 "content": (
-                    f"Trong một buổi ngắn, người học nên chia việc học {title} thành ba bước: đọc lại khái niệm cốt lõi, "
-                    f"tự giải thích cơ chế bằng lời của mình, rồi làm một ví dụ nhỏ hoặc tự vẽ lại mối quan hệ giữa các thành phần. "
-                    f"Nếu còn thời gian, hãy ghi lại ba điều mình đã hiểu rõ hơn và một câu hỏi còn mơ hồ để đào sâu ở buổi sau."
+                    f"Điểm nên nắm tiếp là ranh giới giữa định nghĩa của {title}, cơ chế tạo ra kết quả và điều kiện làm kết quả thay đổi. "
+                    "Khi ba phần này rõ, việc đọc ví dụ hay ứng dụng mới sẽ bớt nhầm hơn nhiều."
                 ),
             },
         },
@@ -368,7 +366,7 @@ def build_explore_mindmap(
         ("core_concept", "Khái niệm cốt lõi", "Nền tảng để hiểu đúng chủ đề."),
         ("mechanism", "Cơ chế hoạt động", "Giải thích điều gì diễn ra bên trong."),
         ("components_and_relationships", "Thành phần và quan hệ", "Cho thấy cấu trúc và sự liên kết."),
-        ("persona_based_example", "Ví dụ theo persona", "Giúp người học hình dung nhanh hơn."),
+        ("persona_based_example", "Ví dụ trực quan", "Giúp hình dung nhanh bằng tình huống cụ thể."),
         ("real_world_applications", "Ứng dụng thực tế", "Biến kiến thức thành giá trị sử dụng."),
         ("common_misconceptions", "Nhầm lẫn phổ biến", "Chỉ ra các chỗ dễ hiểu sai."),
     ]
@@ -506,6 +504,332 @@ def build_quiz_fallback(
         ]
     )
 
+    return questions
+
+
+def _build_targeted_quiz_fact_bank(
+    title: str,
+    summary: str,
+    key_points: list[str],
+    quiz_material: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    facts: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    for point in key_points[:5] or extract_key_points(summary, 5):
+        cleaned = normalize_text(point)
+        if not cleaned or cleaned.lower() in seen:
+            continue
+        seen.add(cleaned.lower())
+        facts.append({"kind": "key_point", "prompt": title, "correct": cleaned, "wrong": ""})
+
+    if isinstance(quiz_material, dict):
+        for item in quiz_material.get("corrections") or []:
+            if not isinstance(item, dict):
+                continue
+            correction = normalize_text(str(item.get("correction") or ""))
+            original = normalize_text(str(item.get("original") or ""))
+            if not correction or correction.lower() in seen:
+                continue
+            seen.add(correction.lower())
+            facts.append({"kind": "correction", "prompt": title, "correct": correction, "wrong": original})
+            if len(facts) >= 6:
+                break
+
+        for section in quiz_material.get("detailed_sections") or []:
+            if not isinstance(section, dict):
+                continue
+            section_title = normalize_text(str(section.get("title") or ""))
+            section_content = normalize_text(str(section.get("content") or ""))
+            sentences = split_sentences(section_content, 1)
+            fact_text = normalize_text(sentences[0] if sentences else section_content)
+            if not fact_text or fact_text.lower() in seen:
+                continue
+            seen.add(fact_text.lower())
+            facts.append(
+                {
+                    "kind": "section",
+                    "prompt": section_title or title,
+                    "correct": fact_text,
+                    "wrong": "",
+                }
+            )
+            if len(facts) >= 8:
+                break
+
+    if facts:
+        return facts
+
+    return [{"kind": "key_point", "prompt": title, "correct": normalize_text(summary) or title, "wrong": ""}]
+
+
+def build_targeted_quiz_fallback(
+    title: str,
+    summary: str,
+    key_points: list[str],
+    num_questions: int,
+    quiz_material: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    fact_bank = _build_targeted_quiz_fact_bank(title, summary, key_points, quiz_material)
+    generic_distractors = [
+        "Má»™t nháº­n Ä‘á»‹nh quÃ¡ chung, khÃ´ng bÃ¡m sÃ¡t pháº§n kiáº¿n thá»©c nÃ y.",
+        "Má»™t cÃ¡ch hiá»ƒu lÃ¢n cáº­n nhÆ°ng khÃ´ng Ä‘Ãºng trá»ng tÃ¢m.",
+        "Má»™t phÃ¡t biá»ƒu nghe há»£p lÃ½ nhÆ°ng khÃ´ng Ä‘Æ°á»£c há»— trá»£ bá»Ÿi material.",
+    ]
+
+    questions: list[dict[str, Any]] = []
+    option_ids = ["A", "B", "C", "D"]
+    total_mcq = min(num_questions, max(3, min(len(fact_bank), num_questions)))
+
+    for index in range(total_mcq):
+        fact = fact_bank[index % len(fact_bank)]
+        correct_text = fact["correct"]
+        distractors: list[str] = []
+        if fact.get("wrong"):
+            distractors.append(fact["wrong"])
+        for candidate in fact_bank:
+            candidate_text = candidate["correct"]
+            if candidate_text == correct_text or candidate_text in distractors:
+                continue
+            distractors.append(candidate_text)
+            if len(distractors) >= 3:
+                break
+        while len(distractors) < 3:
+            distractors.append(generic_distractors[len(distractors)])
+
+        correct_position = index % 4
+        option_texts = distractors[:]
+        option_texts.insert(correct_position, correct_text)
+        option_texts = option_texts[:4]
+
+        if fact["kind"] == "correction":
+            question_text = f"Theo pháº§n Ä‘Ã­nh chÃ­nh, nháº­n Ä‘á»‹nh nÃ o Ä‘Ãºng hÆ¡n vá» {title}?"
+        elif fact["kind"] == "section":
+            question_text = f"Ã nÃ o bÃ¡m Ä‘Ãºng nháº¥t vÃ o '{fact['prompt']}' trong chá»§ Ä‘á» {title}?"
+        else:
+            question_text = f"Nháº­n Ä‘á»‹nh nÃ o pháº£n Ã¡nh Ä‘Ãºng nháº¥t vá» {title}?"
+
+        options = [
+            {"id": option_ids[option_index], "text": option_text}
+            for option_index, option_text in enumerate(option_texts)
+        ]
+
+        questions.append(
+            {
+                "order_index": index,
+                "question_type": "multiple_choice",
+                "question_text": question_text,
+                "options": options,
+                "correct_answer": option_ids[correct_position],
+                "explanation": f"Material nháº¥n máº¡nh: {correct_text}",
+                "difficulty": "medium" if index else "easy",
+            }
+        )
+
+    correction_fact = next((fact for fact in fact_bank if fact["kind"] == "correction" and fact.get("wrong")), None)
+    section_fact = next((fact for fact in fact_bank if fact["kind"] == "section"), None)
+
+    if correction_fact:
+        open_question_1 = {
+            "order_index": len(questions),
+            "question_type": "open",
+            "question_text": (
+                f"VÃ¬ sao phÃ¡t biá»ƒu '{correction_fact['wrong']}' dá»… gÃ¢y hiá»ƒu sai vá» {title}, "
+                "vÃ  báº¡n sáº½ sá»­a láº¡i nÃ³ nhÆ° tháº¿ nÃ o?"
+            ),
+            "thinking_hints": [
+                "Chá»‰ ra Ä‘iá»ƒm sai hoáº·c thiáº¿u",
+                "DÃ¹ng láº¡i cÃ¡ch diá»…n Ä‘áº¡t Ä‘Ãºng hÆ¡n tá»« material",
+            ],
+            "sample_answer_points": [
+                "NÃªu Ä‘Æ°á»£c chÃ­nh xÃ¡c pháº§n dá»… hiá»ƒu sai",
+                "Viáº¿t láº¡i cáº¥u khÃ¡i niá»‡m hoáº·c nháº­n Ä‘á»‹nh Ä‘Ãºng hÆ¡n",
+            ],
+            "difficulty": "hard",
+        }
+    else:
+        open_question_1 = {
+            "order_index": len(questions),
+            "question_type": "open",
+            "question_text": f"Äiá»u nÃ o trong {title} dá»… bá»‹ hiá»ƒu láº§m nháº¥t, vÃ  báº¡n sáº½ giáº£i thÃ­ch láº¡i ra sao?",
+            "thinking_hints": [
+                "Chá»n má»™t Ã½ cá»‘t lÃµi tháº­t dá»… lÃ¢m sang cÃ¡ch hiá»ƒu khÃ¡c",
+                "Giáº£i thÃ­ch láº¡i báº±ng ngÃ´n ngá»¯ ngáº¯n vÃ  rÃµ",
+            ],
+            "sample_answer_points": [
+                "XÃ¡c Ä‘á»‹nh Ä‘Ãºng Ã½ cá»‘t lÃµi hoáº·c cÆ¡ cháº¿",
+                "Cho tháº¥y ranh giá»›i giá»¯a hiá»ƒu Ä‘Ãºng vÃ  hiá»ƒu sai",
+            ],
+            "difficulty": "hard",
+        }
+
+    if section_fact:
+        open_question_2 = {
+            "order_index": len(questions) + 1,
+            "question_type": "open",
+            "question_text": f"HÃ£y dÃ¹ng má»™t tÃ¬nh huá»‘ng cá»¥ thá»ƒ Ä‘á»ƒ giáº£i thÃ­ch '{section_fact['prompt']}' trong chá»§ Ä‘á» {title}.",
+            "thinking_hints": [
+                "Chá»n bá»‘i cáº£nh gáº§n thá»±c táº¿",
+                "LiÃªn há»‡ trá»±c tiáº¿p vá»›i Ã½ cá»‘t lÃµi trong material",
+            ],
+            "sample_answer_points": [
+                "NÃªu Ä‘Æ°á»£c tÃ¬nh huá»‘ng hoáº·c vÃ­ dá»¥ cá»¥ thá»ƒ",
+                "Giáº£i thÃ­ch Ä‘Ãºng vÃ¬ sao vÃ­ dá»¥ Ä‘Ã³ thá»ƒ hiá»‡n Ä‘Æ°á»£c Ã½ cá»‘t lÃµi",
+            ],
+            "difficulty": "medium",
+        }
+    else:
+        open_question_2 = {
+            "order_index": len(questions) + 1,
+            "question_type": "open",
+            "question_text": f"Náº¿u pháº£i giáº£i thÃ­ch {title} cho ngÆ°á»i má»›i, báº¡n sáº½ chá»n 2 Ã½ nÃ o Ä‘á»ƒ báº¯t Ä‘áº§u?",
+            "thinking_hints": [
+                "Æ¯u tiÃªn 2 Ã½ cá»‘t lÃµi nháº¥t",
+                "Giáº£i thÃ­ch vÃ¬ sao khÃ´ng nÃªn báº¯t Ä‘áº§u tá»« chi tiáº¿t phá»¥",
+            ],
+            "sample_answer_points": [
+                "Chá»n Ä‘Ãºng 2 Ã½ nÃªn náº¯m trÆ°á»›c",
+                "Cho tháº¥y logic sáº¯p xáº¿p kiáº¿n thá»©c",
+            ],
+            "difficulty": "medium",
+        }
+
+    questions.extend([open_question_1, open_question_2])
+    return questions
+
+
+def build_targeted_quiz_fallback_v2(
+    title: str,
+    summary: str,
+    key_points: list[str],
+    num_questions: int,
+    quiz_material: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    fact_bank = _build_targeted_quiz_fact_bank(title, summary, key_points, quiz_material)
+    generic_distractors = [
+        "Mot nhan dinh qua chung, khong bam sat phan kien thuc nay.",
+        "Mot cach hieu lan can nhung khong dung trong tam.",
+        "Mot phat bieu nghe hop ly nhung khong duoc ho tro boi material.",
+    ]
+
+    questions: list[dict[str, Any]] = []
+    option_ids = ["A", "B", "C", "D"]
+    total_mcq = min(num_questions, max(3, min(len(fact_bank), num_questions)))
+
+    for index in range(total_mcq):
+        fact = fact_bank[index % len(fact_bank)]
+        correct_text = fact["correct"]
+        distractors: list[str] = []
+        if fact.get("wrong"):
+            distractors.append(fact["wrong"])
+        for candidate in fact_bank:
+            candidate_text = candidate["correct"]
+            if candidate_text == correct_text or candidate_text in distractors:
+                continue
+            distractors.append(candidate_text)
+            if len(distractors) >= 3:
+                break
+        while len(distractors) < 3:
+            distractors.append(generic_distractors[len(distractors)])
+
+        correct_position = index % 4
+        option_texts = distractors[:]
+        option_texts.insert(correct_position, correct_text)
+        option_texts = option_texts[:4]
+
+        if fact["kind"] == "correction":
+            question_text = f"Theo phan dinh chinh, nhan dinh nao dung hon ve {title}?"
+        elif fact["kind"] == "section":
+            question_text = f"Y nao bam dung nhat vao '{fact['prompt']}' trong chu de {title}?"
+        else:
+            question_text = f"Nhan dinh nao phan anh dung nhat ve {title}?"
+
+        options = [
+            {"id": option_ids[option_index], "text": option_text}
+            for option_index, option_text in enumerate(option_texts)
+        ]
+
+        questions.append(
+            {
+                "order_index": index,
+                "question_type": "multiple_choice",
+                "question_text": question_text,
+                "options": options,
+                "correct_answer": option_ids[correct_position],
+                "explanation": f"Material nhan manh: {correct_text}",
+                "difficulty": "medium" if index else "easy",
+            }
+        )
+
+    correction_fact = next((fact for fact in fact_bank if fact["kind"] == "correction" and fact.get("wrong")), None)
+    section_fact = next((fact for fact in fact_bank if fact["kind"] == "section"), None)
+
+    if correction_fact:
+        open_question_1 = {
+            "order_index": len(questions),
+            "question_type": "open",
+            "question_text": (
+                f"Vi sao phat bieu '{correction_fact['wrong']}' de gay hieu sai ve {title}, "
+                "va ban se sua lai no nhu the nao?"
+            ),
+            "thinking_hints": [
+                "Chi ra diem sai hoac thieu",
+                "Dung lai cach dien dat dung hon tu material",
+            ],
+            "sample_answer_points": [
+                "Neu duoc chinh xac phan de hieu sai",
+                "Viet lai cau khai niem hoac nhan dinh dung hon",
+            ],
+            "difficulty": "hard",
+        }
+    else:
+        open_question_1 = {
+            "order_index": len(questions),
+            "question_type": "open",
+            "question_text": f"Dieu nao trong {title} de bi hieu lam nhat, va ban se giai thich lai ra sao?",
+            "thinking_hints": [
+                "Chon mot y cot loi that de lam sang cach hieu khac",
+                "Giai thich lai bang ngon ngu ngan va ro",
+            ],
+            "sample_answer_points": [
+                "Xac dinh dung y cot loi hoac co che",
+                "Cho thay ranh gioi giua hieu dung va hieu sai",
+            ],
+            "difficulty": "hard",
+        }
+
+    if section_fact:
+        open_question_2 = {
+            "order_index": len(questions) + 1,
+            "question_type": "open",
+            "question_text": f"Hay dung mot tinh huong cu the de giai thich '{section_fact['prompt']}' trong chu de {title}.",
+            "thinking_hints": [
+                "Chon boi canh gan thuc te",
+                "Lien he truc tiep voi y cot loi trong material",
+            ],
+            "sample_answer_points": [
+                "Neu duoc tinh huong hoac vi du cu the",
+                "Giai thich dung vi sao vi du do the hien duoc y cot loi",
+            ],
+            "difficulty": "medium",
+        }
+    else:
+        open_question_2 = {
+            "order_index": len(questions) + 1,
+            "question_type": "open",
+            "question_text": f"Neu phai giai thich {title} cho nguoi moi, ban se chon 2 y nao de bat dau?",
+            "thinking_hints": [
+                "Uu tien 2 y cot loi nhat",
+                "Giai thich vi sao khong nen bat dau tu chi tiet phu",
+            ],
+            "sample_answer_points": [
+                "Chon dung 2 y nen nam truoc",
+                "Cho thay logic sap xep kien thuc",
+            ],
+            "difficulty": "medium",
+        }
+
+    questions.extend([open_question_1, open_question_2])
     return questions
 
 

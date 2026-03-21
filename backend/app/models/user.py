@@ -28,6 +28,11 @@ class OnboardingData(BaseModel):
     industry: str | None = None
     job_title: str | None = None
     years_experience: int | None = Field(default=None, ge=0)
+    target_role: str | None = None
+    current_focus: str | None = None
+    current_challenges: str | None = None
+    desired_outcome: str | None = None
+    learning_constraints: str | None = None
     learning_goals: list[str] = Field(default_factory=list)
     topics_of_interest: list[str] = Field(default_factory=list)
     learning_style: LearningStyle = "mixed"
@@ -39,4 +44,3 @@ class OnboardingResponse(BaseModel):
     ai_persona: str
     ai_persona_description: str
     ai_recommended_topics: list[str] = Field(default_factory=list)
-

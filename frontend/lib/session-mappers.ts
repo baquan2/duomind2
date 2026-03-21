@@ -9,13 +9,19 @@ import {
   extractSourceLabel,
   stripSourceLabel,
 } from "@/lib/analysis-source"
+import { getReadableGeneratedTitle } from "@/lib/generated-content"
 
 export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResult {
   const rawContent = stripSourceLabel(session.user_input)
 
   return {
     session_id: session.id,
-    title: session.title,
+    title: getReadableGeneratedTitle(
+      session.title,
+      session.infographic_data?.title,
+      rawContent,
+      session.summary
+    ),
     accuracy_score: session.accuracy_score ?? null,
     accuracy_assessment:
       (session.accuracy_assessment as AnalyzeResult["accuracy_assessment"]) ??
@@ -23,8 +29,11 @@ export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResu
     summary: session.summary ?? "",
     key_points: session.key_points ?? [],
     corrections: session.corrections ?? [],
+    knowledge_detail_data:
+      session.infographic_data ?? buildFallbackKnowledgeDetail(session),
     topic_tags: session.topic_tags ?? [],
     mindmap_data: session.mindmap_data ?? buildFallbackMindMap(session),
+    sources: session.sources ?? [],
     source_label: extractSourceLabel(session.user_input) || "Nội dung nhập tay",
     input_preview: buildInputPreview(rawContent),
   }
@@ -40,6 +49,7 @@ export function mapSessionToExploreResult(session: LearningSession): ExploreResu
       session.infographic_data ?? buildFallbackKnowledgeDetail(session),
     topic_tags: session.topic_tags ?? [],
     mindmap_data: session.mindmap_data ?? buildFallbackMindMap(session),
+    sources: session.sources ?? [],
   }
 }
 
@@ -67,9 +77,9 @@ function buildFallbackKnowledgeDetail(session: LearningSession): KnowledgeDetail
           keyPoints[2] ?? "Chỉ ra các thành phần quan trọng và cách chúng liên kết với nhau.",
       },
       persona_based_example: {
-        title: "Ví dụ trực quan theo đúng persona",
+        title: "Ví dụ trực quan",
         content:
-          keyPoints[3] ?? "Dùng ví dụ gần bối cảnh người học để tăng khả năng tiếp thu.",
+          keyPoints[3] ?? "Dùng ví dụ ngắn, sát thực tế để làm rõ ý chính của chủ đề.",
       },
       real_world_applications: {
         title: "Ứng dụng thực tế",
@@ -81,8 +91,8 @@ function buildFallbackKnowledgeDetail(session: LearningSession): KnowledgeDetail
         content: "Nhắc lại các hiểu sai thường gặp để tránh học lệch từ đầu.",
       },
       next_step_self_study: {
-        title: "Cách tự học tiếp trong 1 buổi ngắn",
-        content: "Ôn lại phần cốt lõi, ghi chú ý chính và làm một ví dụ ngắn ngay sau khi đọc.",
+        title: "Điểm cần nắm tiếp",
+        content: "Chốt lại phần cốt lõi, cơ chế và chỗ dễ nhầm trước khi mở rộng sang ví dụ khác.",
       },
     },
     teaching_adaptation: {

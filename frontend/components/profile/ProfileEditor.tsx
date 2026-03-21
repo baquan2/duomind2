@@ -1,9 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import { Save, Sparkles, UserRound } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
+import { LearnerMemoryCard } from "@/components/profile/LearnerMemoryCard"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,8 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
+import { Textarea } from "@/components/ui/textarea"
 import { submitOnboarding } from "@/lib/api/onboarding"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import {
+  buildAnalyzeStarterContent,
+  buildExplorePromptFromTopic,
+  buildMentorPrompts,
+  buildProfileReadiness,
+} from "@/lib/learning-roadmap"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import {
@@ -27,9 +36,10 @@ import {
   EDUCATION_OPTIONS,
   GOAL_OPTIONS,
   STATUS_OPTIONS,
+  TARGET_ROLE_OPTIONS,
   TOPIC_OPTIONS,
 } from "@/components/onboarding/options"
-import type { OnboardingData, OnboardingResponse } from "@/types"
+import type { MentorMemoryItem, OnboardingData, OnboardingResponse } from "@/types"
 
 type ProfileEditorState = Partial<OnboardingData> & {
   full_name: string
@@ -47,6 +57,7 @@ interface ProfileEditorProps {
   createdAt?: string | null
   initialFullName?: string | null
   initialOnboarding?: InitialOnboardingSnapshot | null
+  mentorMemories?: MentorMemoryItem[]
 }
 
 const DAILY_STUDY_PRESETS = [15, 30, 45, 60, 90]
@@ -71,6 +82,7 @@ export function ProfileEditor({
   createdAt,
   initialFullName,
   initialOnboarding,
+  mentorMemories = [],
 }: ProfileEditorProps) {
   const router = useRouter()
   const initialState = useMemo<ProfileEditorState>(
@@ -84,6 +96,11 @@ export function ProfileEditor({
       industry: initialOnboarding?.industry ?? "",
       job_title: initialOnboarding?.job_title ?? "",
       years_experience: initialOnboarding?.years_experience ?? undefined,
+      target_role: initialOnboarding?.target_role ?? "",
+      current_focus: initialOnboarding?.current_focus ?? "",
+      current_challenges: initialOnboarding?.current_challenges ?? "",
+      desired_outcome: initialOnboarding?.desired_outcome ?? "",
+      learning_constraints: initialOnboarding?.learning_constraints ?? "",
       learning_goals: initialOnboarding?.learning_goals ?? [],
       topics_of_interest: initialOnboarding?.topics_of_interest ?? [],
       learning_style: initialOnboarding?.learning_style ?? "mixed",
@@ -113,6 +130,37 @@ export function ProfileEditor({
   const personaDescription = sanitizePersonaDescription(aiResult?.ai_persona_description)
   const recommendedTopics = sanitizeRecommendedTopics(aiResult?.ai_recommended_topics ?? [])
   const hasMeaningfulPersona = Boolean(aiResult?.ai_persona && (personaDescription || recommendedTopics.length))
+  const profileReadiness = buildProfileReadiness({
+    target_role: form.target_role,
+    desired_outcome: form.desired_outcome,
+    current_focus: form.current_focus,
+    current_challenges: form.current_challenges,
+    learning_constraints: form.learning_constraints,
+    learning_goals: form.learning_goals ?? [],
+    ai_recommended_topics:
+      aiResult?.ai_recommended_topics ?? initialOnboarding?.ai_recommended_topics ?? [],
+    daily_study_minutes: form.daily_study_minutes ?? 30,
+  })
+  const mentorPrompt = buildMentorPrompts(
+    {
+      target_role: form.target_role,
+      desired_outcome: form.desired_outcome,
+      current_challenges: form.current_challenges,
+      learning_goals: form.learning_goals ?? [],
+      ai_recommended_topics:
+        aiResult?.ai_recommended_topics ?? initialOnboarding?.ai_recommended_topics ?? [],
+      daily_study_minutes: form.daily_study_minutes ?? 30,
+    },
+    null
+  )[0]
+  const focusTopic =
+    recommendedTopics[0] ||
+    initialOnboarding?.ai_recommended_topics?.[0] ||
+    form.topics_of_interest?.[0] ||
+    form.current_focus ||
+    "khối kỹ năng ưu tiên"
+  const explorePrompt = buildExplorePromptFromTopic(focusTopic, form.target_role)
+  const analyzeStarter = buildAnalyzeStarterContent(focusTopic, form.target_role)
 
   const updateField = <K extends keyof ProfileEditorState>(key: K, value: ProfileEditorState[K]) => {
     setForm((previous) => ({ ...previous, [key]: value }))
@@ -376,6 +424,45 @@ export function ProfileEditor({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
+                <Label className="text-base font-medium">Vai trò bạn đang hướng tới</Label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {TARGET_ROLE_OPTIONS.map((option) => {
+                    const selected = form.target_role === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updateField("target_role", option.value)}
+                        className={cn(
+                          "rounded-2xl border px-4 py-3 text-left transition-colors",
+                          selected
+                            ? "border-primary bg-primary/5 font-medium"
+                            : "border-border hover:border-primary/35"
+                        )}
+                      >
+                        <div className="font-medium">{option.label}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">{option.desc}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="space-y-2 rounded-[1.5rem] border border-dashed border-primary/30 bg-primary/5 p-4">
+                  <Label htmlFor="profile-custom-target-role">Hoặc tự nhập mục tiêu nghề nghiệp của bạn</Label>
+                  <Input
+                    id="profile-custom-target-role"
+                    value={form.target_role ?? ""}
+                    onChange={(event) => updateField("target_role", event.target.value)}
+                    placeholder="Ví dụ: UI/UX Designer, Giáo viên tiếng Anh, QA Engineer..."
+                    className="h-11 bg-background"
+                  />
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Nếu vai trò của bạn chưa có trong danh sách, hãy nhập trực tiếp. Mentor,
+                    roadmap và Explore sẽ bám theo chính mục tiêu này.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
                 <Label className="text-base font-medium">Mục tiêu học tập</Label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {GOAL_OPTIONS.map((option) => {
@@ -420,6 +507,58 @@ export function ProfileEditor({
                       </button>
                     )
                   })}
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-[1.5rem] border border-border/70 bg-background/70 p-5">
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Bối cảnh học tập thực tế</Label>
+                  <p className="text-sm leading-7 text-muted-foreground">
+                    Các trường này giúp mentor hiểu rõ mục tiêu thật, khó khăn thật và ràng buộc
+                    thật của bạn, thay vì suy đoán theo hồ sơ chung.
+                  </p>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Đầu ra mong muốn trong ngắn hạn</Label>
+                    <Textarea
+                      value={form.desired_outcome ?? ""}
+                      onChange={(event) => updateField("desired_outcome", event.target.value)}
+                      placeholder="Ví dụ: Trong 3 tháng có thể apply intern Frontend với 2 project deploy được."
+                      className="min-h-[120px] rounded-2xl border-border/70 bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Trọng tâm hiện tại</Label>
+                    <Textarea
+                      value={form.current_focus ?? ""}
+                      onChange={(event) => updateField("current_focus", event.target.value)}
+                      placeholder="Ví dụ: Đang học React, luyện đọc API và cố hoàn thành project đầu tiên."
+                      className="min-h-[120px] rounded-2xl border-border/70 bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Khó khăn lớn nhất</Label>
+                    <Textarea
+                      value={form.current_challenges ?? ""}
+                      onChange={(event) => updateField("current_challenges", event.target.value)}
+                      placeholder="Ví dụ: Học dễ bị lan man, khó tự đánh giá mình đang thiếu gì."
+                      className="min-h-[120px] rounded-2xl border-border/70 bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Ràng buộc cần tính tới</Label>
+                    <Textarea
+                      value={form.learning_constraints ?? ""}
+                      onChange={(event) => updateField("learning_constraints", event.target.value)}
+                      placeholder="Ví dụ: Chỉ có 45 phút/ngày, đang vừa đi học vừa làm, chưa có laptop mạnh."
+                      className="min-h-[120px] rounded-2xl border-border/70 bg-background"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -513,6 +652,15 @@ export function ProfileEditor({
                     <p className="mt-2 text-muted-foreground">{personaDescription}</p>
                   ) : null}
                 </div>
+                {recommendedTopics.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {recommendedTopics.map((topic) => (
+                      <Badge key={topic} variant="secondary" className="rounded-full px-3 py-1">
+                        {topic}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
 
               </CardContent>
             </Card>
@@ -536,6 +684,24 @@ export function ProfileEditor({
                   {createdAt ? new Date(createdAt).toLocaleDateString("vi-VN") : "Chưa rõ"}
                 </p>
               </div>
+              {form.target_role ? (
+                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                  <div className="font-medium text-foreground">Mục tiêu nghề nghiệp</div>
+                  <p className="mt-1">{form.target_role}</p>
+                </div>
+              ) : null}
+              {form.desired_outcome?.trim() ? (
+                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                  <div className="font-medium text-foreground">Đầu ra mong muốn</div>
+                  <p className="mt-1">{form.desired_outcome}</p>
+                </div>
+              ) : null}
+              {form.current_challenges?.trim() ? (
+                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                  <div className="font-medium text-foreground">Khó khăn đang gặp</div>
+                  <p className="mt-1">{form.current_challenges}</p>
+                </div>
+              ) : null}
               <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
                 <div className="font-medium text-foreground">Gợi ý sử dụng</div>
                 <p className="mt-1 text-muted-foreground">
@@ -544,6 +710,73 @@ export function ProfileEditor({
               </div>
             </CardContent>
           </Card>
+
+          <Card className="border border-border/70 bg-card/92">
+            <CardHeader>
+              <CardTitle className="text-2xl">Bước tiếp theo nên làm</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm leading-7">
+              <div className="rounded-[1.5rem] border border-primary/15 bg-primary/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-[0.16em] text-primary">
+                      Độ đầy hồ sơ
+                    </div>
+                    <div className="mt-1 font-display text-2xl font-semibold text-foreground">
+                      {profileReadiness.score}/100
+                    </div>
+                  </div>
+                  <Badge variant={profileReadiness.missingItems.length ? "outline" : "secondary"}>
+                    {profileReadiness.label}
+                  </Badge>
+                </div>
+                <p className="mt-3 text-foreground/78">{profileReadiness.summary}</p>
+                {profileReadiness.missingItems.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {profileReadiness.missingItems.slice(0, 4).map((item) => (
+                      <Badge key={item} variant="outline" className="rounded-full">
+                        Thiếu: {item}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-border/70 bg-background/80 p-4 text-muted-foreground">
+                1. Mở Mentor để khóa khoảng trống kỹ năng. 2. Sang Lộ trình để xem thứ tự hành động.
+                3. Dùng Explore hoặc Analyze để học đúng phần đang thiếu.
+              </div>
+
+              <div className="grid gap-3">
+                <Button asChild className="justify-between">
+                  <Link href={`/mentor?question=${encodeURIComponent(mentorPrompt)}`}>
+                    Mở Mentor với câu hỏi gợi ý
+                    <Sparkles className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="justify-between">
+                  <Link href="/roadmap">
+                    Xem lộ trình hiện tại
+                    <Sparkles className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="justify-between">
+                  <Link href={`/explore?prompt=${encodeURIComponent(explorePrompt)}`}>
+                    Học chủ đề ưu tiên trong Explore
+                    <Sparkles className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="justify-between">
+                  <Link href={`/analyze?content=${encodeURIComponent(analyzeStarter)}`}>
+                    Tự kiểm tra bằng Analyze
+                    <Sparkles className="size-4" />
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <LearnerMemoryCard mentorMemories={mentorMemories} />
         </div>
       </div>
     </div>
@@ -567,6 +800,18 @@ function buildPayload(form: ProfileEditorState): OnboardingData | null {
     return null
   }
 
+  if (!form.target_role?.trim()) {
+    return null
+  }
+
+  if (!form.desired_outcome?.trim()) {
+    return null
+  }
+
+  if (!form.current_focus?.trim() && !form.current_challenges?.trim()) {
+    return null
+  }
+
   if (!form.learning_goals?.length || !form.topics_of_interest?.length) {
     return null
   }
@@ -580,6 +825,11 @@ function buildPayload(form: ProfileEditorState): OnboardingData | null {
     industry: form.industry?.trim() || undefined,
     job_title: form.job_title?.trim() || undefined,
     years_experience: form.years_experience ?? undefined,
+    target_role: form.target_role?.trim() || undefined,
+    current_focus: form.current_focus?.trim() || undefined,
+    current_challenges: form.current_challenges?.trim() || undefined,
+    desired_outcome: form.desired_outcome?.trim() || undefined,
+    learning_constraints: form.learning_constraints?.trim() || undefined,
     learning_goals: form.learning_goals ?? [],
     topics_of_interest: form.topics_of_interest ?? [],
     learning_style: form.learning_style ?? "mixed",

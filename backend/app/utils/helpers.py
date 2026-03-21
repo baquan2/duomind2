@@ -110,10 +110,8 @@ def strip_source_label(stored_input: str | None) -> str:
 
 
 def build_input_preview(content: str, max_chars: int = 180) -> str:
-    normalized = normalize_text(content)
-    if len(normalized) <= max_chars:
-        return normalized
-    return normalized[:max_chars].rstrip(" ,.;:") + "..."
+    _ = max_chars
+    return normalize_text(content)
 
 
 def clean_keyword(text: str) -> str:
@@ -165,6 +163,17 @@ QUESTION_SUFFIX_PATTERNS = [
     r"\b(thế nào|the nao)\b",
 ]
 
+TOPIC_INSTRUCTION_PATTERNS = [
+    r"\b(theo c[aá]ch d[eê] hi[ểe]u|theo cach de hieu)\b.*$",
+    r"\b(d[aà]nh cho ng[uư][ờo]i m[ớo]i b[aắ]t [đd][ầa]u|danh cho nguoi moi bat dau)\b.*$",
+    r"\b(b[aá]m m[uụ]c ti[eê]u|bam muc tieu)\b.*$",
+    r"\b(theo h[uư][ớo]ng ngh[eề] nghi[eệ]p|theo huong nghe nghiep)\b.*$",
+    r"\b(ph[uù] h[oợ]p v[ớo]i h[oồ] s[oơ]|phu hop voi ho so)\b.*$",
+    r"\b(c[oó] v[ií] d[uụ]|co vi du)\b.*$",
+    r"\b(ng[aắ]n g[oọ]n|ngan gon)\b.*$",
+    r"\b(tr[oọ]ng t[aâ]m|trong tam)\b.*$",
+]
+
 
 def normalize_topic_phrase(text: str) -> str:
     cleaned = normalize_text(text).strip(" .?!,:;-")
@@ -182,6 +191,9 @@ def normalize_topic_phrase(text: str) -> str:
         cleaned,
         flags=re.IGNORECASE,
     ).strip(" .?!,:;-")
+    for pattern in TOPIC_INSTRUCTION_PATTERNS:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip(" .?!,:;-")
+    cleaned = re.sub(r"\s*,\s*(vÃ  .*|va .*|cÃ³ .*|co .*)$", "", cleaned, flags=re.IGNORECASE).strip(" .?!,:;-")
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" .?!,:;-")
     return cleaned or normalize_text(text).strip(" .?!,:;-")
 
@@ -207,6 +219,51 @@ def shorten_phrase(text: str, max_words: int = 6, max_chars: int = 48) -> str:
     if len(shortened) > max_chars:
         shortened = shortened[:max_chars].rstrip(" ,.;:")
     return shortened or normalized[:max_chars].rstrip(" ,.;:")
+
+
+def _extract_core_title_candidate(text: str) -> str:
+    normalized = normalize_topic_phrase(text) or normalize_text(text).strip(" .?!,:;-")
+    ascii_lowered = strip_accents(normalized).lower()
+
+    explicit_patterns = (
+        r"^(?:khai niem|dinh nghia)\s+cua\s+(.+?)\s+la\b",
+        r"^(?:khai niem|dinh nghia)\s+ve\s+(.+?)\s+la\b",
+    )
+    for pattern in explicit_patterns:
+        match = re.search(pattern, ascii_lowered, flags=re.IGNORECASE)
+        if not match:
+            continue
+        start_index = match.start(1)
+        end_index = match.end(1)
+        candidate = normalize_text(normalized[start_index:end_index]).strip(" .?!,:;-")
+        if candidate:
+            return candidate
+
+    generic_match = re.search(
+        r"^(.+?)\s+la\s+(?:mot|một|qua trinh|quá trình|he thong|hệ thống|ngon ngu|ngôn ngữ)\b",
+        ascii_lowered,
+        flags=re.IGNORECASE,
+    )
+    if generic_match:
+        start_index = generic_match.start(1)
+        end_index = generic_match.end(1)
+        candidate = normalize_text(normalized[start_index:end_index]).strip(" .?!,:;-")
+        if 0 < len(candidate.split()) <= 8:
+            return candidate
+
+    return normalized
+
+
+def build_core_title(text: str, fallback: str, max_words: int = 8, max_chars: int = 56) -> str:
+    cleaned = _extract_core_title_candidate(text)
+    words = cleaned.split()
+
+    while words and strip_accents(words[-1]).lower() in {"va", "voi", "hay", "hoac", "la", "gi", "nao"}:
+        words.pop()
+
+    compact = " ".join(words).strip(" .?!,:;-")
+    compact = sentence_case(shorten_phrase(compact, max_words=max_words, max_chars=max_chars))
+    return compact or fallback
 
 
 def normalize_topic_tags(
@@ -267,6 +324,11 @@ def build_learner_profile(data: dict[str, Any]) -> str:
         f"- Industry: {data.get('industry') or 'unknown'}",
         f"- Job title: {data.get('job_title') or 'unknown'}",
         f"- Years of experience: {data.get('years_experience') or 0}",
+        f"- Target role: {data.get('target_role') or 'unknown'}",
+        f"- Current focus: {data.get('current_focus') or 'unknown'}",
+        f"- Current challenges: {data.get('current_challenges') or 'unknown'}",
+        f"- Desired outcome: {data.get('desired_outcome') or 'unknown'}",
+        f"- Learning constraints: {data.get('learning_constraints') or 'unknown'}",
         f"- Learning goals: {', '.join(data.get('learning_goals') or []) or 'unknown'}",
         f"- Topics of interest: {', '.join(data.get('topics_of_interest') or []) or 'unknown'}",
         f"- Learning style: {data.get('learning_style') or 'mixed'}",
@@ -301,6 +363,16 @@ def _build_background_context(onboarding_data: dict[str, Any]) -> str:
         parts.append(f"ngành {onboarding_data['industry']}")
     if onboarding_data.get("job_title"):
         parts.append(f"vai trò {onboarding_data['job_title']}")
+    if onboarding_data.get("target_role"):
+        parts.append(f"mục tiêu nghề nghiệp {onboarding_data['target_role']}")
+    if onboarding_data.get("desired_outcome"):
+        parts.append(f"đầu ra mong muốn {onboarding_data['desired_outcome']}")
+    if onboarding_data.get("current_focus"):
+        parts.append(f"đang tập trung vào {onboarding_data['current_focus']}")
+    if onboarding_data.get("current_challenges"):
+        parts.append(f"khó khăn hiện tại {onboarding_data['current_challenges']}")
+    if onboarding_data.get("learning_constraints"):
+        parts.append(f"ràng buộc học tập {onboarding_data['learning_constraints']}")
     if onboarding_data.get("education_level"):
         parts.append(f"trình độ {onboarding_data['education_level']}")
 
@@ -355,6 +427,11 @@ def get_user_context(onboarding_data: dict | None) -> dict[str, Any]:
             "user_persona": "general_learner",
             "user_persona_description": "Người học cần lời giải thích rõ ràng, thực dụng và dễ theo dõi.",
             "difficulty_level": "intermediate",
+            "target_role": "unknown",
+            "current_focus": "unknown",
+            "current_challenges": "unknown",
+            "desired_outcome": "unknown",
+            "learning_constraints": "unknown",
             "learning_goals": "general_knowledge",
             "learning_style": "mixed",
             "daily_study_minutes": 30,
@@ -377,6 +454,11 @@ def get_user_context(onboarding_data: dict | None) -> dict[str, Any]:
             "Người học cần lời giải thích rõ ràng, thực dụng và dễ theo dõi.",
         ),
         "difficulty_level": difficulty_level,
+        "target_role": onboarding_data.get("target_role") or "unknown",
+        "current_focus": onboarding_data.get("current_focus") or "unknown",
+        "current_challenges": onboarding_data.get("current_challenges") or "unknown",
+        "desired_outcome": onboarding_data.get("desired_outcome") or "unknown",
+        "learning_constraints": onboarding_data.get("learning_constraints") or "unknown",
         "learning_goals": ", ".join(learning_goals) or "general_knowledge",
         "learning_style": learning_style,
         "daily_study_minutes": daily_study_minutes,
@@ -388,6 +470,43 @@ def get_user_context(onboarding_data: dict | None) -> dict[str, Any]:
         "study_pacing": _derive_study_pacing(daily_study_minutes),
         "content_depth": _derive_content_depth(difficulty_level, daily_study_minutes),
     }
+
+
+def build_prompt_learning_context(user_context: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep only context that should influence example choice, pacing, and depth."""
+    if not user_context:
+        return {}
+
+    fields = (
+        "user_persona_description",
+        "difficulty_level",
+        "target_role",
+        "current_focus",
+        "current_challenges",
+        "desired_outcome",
+        "learning_constraints",
+        "learning_goals",
+        "learning_style",
+        "daily_study_minutes",
+        "busyness_level",
+        "practical_example_need",
+        "study_pacing",
+        "content_depth",
+    )
+
+    prompt_context: dict[str, Any] = {}
+    for field in fields:
+        value = user_context.get(field)
+        if isinstance(value, str):
+            cleaned = normalize_text(value)
+            if not cleaned or cleaned.lower() == "unknown":
+                continue
+            prompt_context[field] = cleaned
+            continue
+        if isinstance(value, (int, float)) and value:
+            prompt_context[field] = value
+
+    return prompt_context
 
 
 def _node_payload(item: dict[str, Any], fallback_label: str) -> dict[str, Any]:

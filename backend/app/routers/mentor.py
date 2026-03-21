@@ -25,6 +25,31 @@ from app.utils.helpers import normalize_text
 router = APIRouter()
 
 
+def _prepend_target_role_questions(
+    questions: list[str],
+    onboarding: dict | None,
+) -> list[str]:
+    target_role = normalize_text(str((onboarding or {}).get("target_role") or ""))
+    if not target_role:
+        return questions
+
+    priority_questions = [
+        f"Để tiến gần tới vai trò {target_role}, tôi nên ưu tiên học gì trong 30 ngày tới?",
+        f"Với mục tiêu {target_role}, tôi đang thiếu những kỹ năng nào quan trọng nhất?",
+    ]
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for question in priority_questions + questions:
+        cleaned = normalize_text(question)
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            merged.append(question)
+        if len(merged) >= 6:
+            break
+    return merged
+
+
 def _map_thread(thread: dict) -> MentorThreadSummary:
     return MentorThreadSummary(
         id=str(thread.get("id")),
@@ -114,7 +139,7 @@ async def get_suggested_questions(
     profile = svc.get_profile(current_user["id"])
     onboarding = svc.get_onboarding(current_user["id"])
     return MentorSuggestedQuestionsResponse(
-        questions=build_suggested_questions(profile, onboarding)
+        questions=_prepend_target_role_questions(build_suggested_questions(profile, onboarding), onboarding)
     )
 
 
@@ -184,15 +209,40 @@ async def mentor_chat(
             message=request.message,
         )
 
-    assistant_message = svc.create_mentor_message(
-        thread_id=thread_id,
-        user_id=current_user["id"],
-        role="assistant",
-        content=mentor_result["answer"],
-        intent=mentor_result["intent"],
-        response_data=mentor_result,
-        sources=mentor_result["sources"],
-    )
+    try:
+        assistant_message = svc.create_mentor_message(
+            thread_id=thread_id,
+            user_id=current_user["id"],
+            role="assistant",
+            content=mentor_result["answer"],
+            intent=mentor_result["intent"],
+            response_data=mentor_result,
+            sources=mentor_result["sources"],
+        )
+    except Exception as exc:
+        print(f"[mentor] Failed to persist rich assistant message: {exc}")
+        try:
+            assistant_message = svc.create_mentor_message(
+                thread_id=thread_id,
+                user_id=current_user["id"],
+                role="assistant",
+                content=mentor_result["answer"],
+                intent=mentor_result["intent"],
+                response_data=None,
+                sources=[],
+            )
+        except Exception as fallback_exc:
+            print(f"[mentor] Failed to persist lean assistant message: {fallback_exc}")
+            assistant_message = {
+                "id": "__assistant_fallback__",
+                "thread_id": thread_id,
+                "role": "assistant",
+                "intent": mentor_result["intent"],
+                "content": mentor_result["answer"],
+                "response_data": mentor_result,
+                "sources": mentor_result["sources"],
+                "created_at": None,
+            }
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -200,16 +250,26 @@ async def mentor_chat(
         )
 
     for memory_update in mentor_result.get("memory_updates", []):
-        svc.upsert_mentor_memory(
-            user_id=current_user["id"],
-            memory_type=str(memory_update["memory_type"]),
-            memory_key=str(memory_update["memory_key"]),
-            memory_value=memory_update["memory_value"],
-            confidence=float(memory_update.get("confidence", 0.8)),
-            source_thread_id=thread_id,
-        )
+        try:
+            svc.upsert_mentor_memory(
+                user_id=current_user["id"],
+                memory_type=str(memory_update["memory_type"]),
+                memory_key=str(memory_update["memory_key"]),
+                memory_value=memory_update["memory_value"],
+                confidence=float(memory_update.get("confidence", 0.8)),
+                source_thread_id=thread_id,
+            )
+        except Exception as exc:
+            print(
+                "[mentor] Failed to persist memory update "
+                f"{memory_update.get('memory_key')}: {exc}"
+            )
 
-    messages = svc.get_mentor_messages(thread_id, current_user["id"], limit=50)
+    try:
+        messages = svc.get_mentor_messages(thread_id, current_user["id"], limit=50)
+    except Exception as exc:
+        print(f"[mentor] Failed to reload messages after reply: {exc}")
+        messages = existing_messages + [user_message, assistant_message]
 
     return MentorChatResponse(
         thread_id=thread_id,
@@ -220,6 +280,7 @@ async def mentor_chat(
         career_paths=mentor_result["career_paths"],
         market_signals=mentor_result["market_signals"],
         skill_gaps=mentor_result["skill_gaps"],
+        decision_summary=mentor_result.get("decision_summary"),
         recommended_learning_steps=mentor_result["recommended_learning_steps"],
         suggested_followups=mentor_result["suggested_followups"],
         sources=mentor_result["sources"],

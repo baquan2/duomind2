@@ -1,4 +1,4 @@
-from .helpers import get_user_context, safe_parse_json, truncate_content
+from .helpers import build_prompt_learning_context, get_user_context, safe_parse_json, truncate_content
 from .prompts import (
     ANALYZE_CONTENT_PROMPT,
     EXPLORE_TOPIC_PROMPT,
@@ -21,8 +21,8 @@ __all__ = [
     "OPEN_ANSWER_FEEDBACK_PROMPT",
     "OPEN_QUESTIONS_PROMPT",
     "QUIZ_GENERATE_PROMPT",
+    "build_prompt_learning_context",
     "get_user_context",
     "safe_parse_json",
     "truncate_content",
 ]
-

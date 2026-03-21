@@ -49,7 +49,9 @@ function createHeading(
   })
 }
 
-function getKnowledgeDetailEntries(data: SessionDetailResponse["session"]["infographic_data"]) {
+function getKnowledgeDetailEntries(
+  data: SessionDetailResponse["session"]["infographic_data"]
+) {
   if (!data?.detailed_sections) {
     return []
   }
@@ -63,6 +65,10 @@ function getKnowledgeDetailEntries(data: SessionDetailResponse["session"]["infog
     data.detailed_sections.common_misconceptions,
     data.detailed_sections.next_step_self_study,
   ].filter((section) => section?.title && section?.content)
+}
+
+function getSourceEntries(data: SessionDetailResponse["session"]["sources"]) {
+  return (data || []).filter((source) => source?.label && source?.url)
 }
 
 export async function exportSessionAsWord(data: SessionDetailResponse) {
@@ -104,6 +110,18 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
         createBullet(`Gợi ý sửa: ${item.correction}`),
         createBullet(`Giải thích: ${item.explanation}`, 1)
       )
+    })
+  }
+
+  const sourceEntries = getSourceEntries(session.sources)
+  if (sourceEntries.length) {
+    children.push(createHeading("Nguồn xác minh", HeadingLevel.HEADING_1))
+    sourceEntries.forEach((source) => {
+      children.push(createBullet(source.label))
+      children.push(createBullet(source.url, 1))
+      if (source.snippet) {
+        children.push(createBullet(source.snippet, 1))
+      }
     })
   }
 
@@ -178,6 +196,19 @@ export function exportSessionAsMarkdown(data: SessionDetailResponse) {
       lines.push(`${index + 1}. Sai: ${item.original}`)
       lines.push(`   - Đúng: ${item.correction}`)
       lines.push(`   - Giải thích: ${item.explanation}`)
+    })
+    lines.push("")
+  }
+
+  const sourceEntries = getSourceEntries(session.sources)
+  if (sourceEntries.length) {
+    lines.push("## Nguồn xác minh", "")
+    sourceEntries.forEach((source, index) => {
+      lines.push(`${index + 1}. ${source.label}`)
+      lines.push(`   - URL: ${source.url}`)
+      if (source.snippet) {
+        lines.push(`   - Ghi chú: ${source.snippet}`)
+      }
     })
     lines.push("")
   }

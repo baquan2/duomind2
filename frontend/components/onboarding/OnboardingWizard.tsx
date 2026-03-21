@@ -106,8 +106,8 @@ export function OnboardingWizard() {
           Cá nhân hóa trải nghiệm học tập của bạn
         </h1>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Wizard 4 bước này giúp DUO MIND xác định persona, độ khó và cách trình bày phù
-          hợp trước khi bạn bắt đầu dashboard.
+          Wizard 4 bước này giúp DUO MIND hiểu mục tiêu nghề nghiệp, bối cảnh hiện tại và cách học
+          phù hợp nhất trước khi bạn bắt đầu dùng dashboard.
         </p>
       </div>
 
@@ -176,11 +176,23 @@ function validateStep(step: number, data: OnboardingFormState) {
     }
 
     if (needsWorkingInfo && !data.industry?.trim() && !data.job_title?.trim()) {
-      return "Hãy thêm ngành nghề hoặc vị trí công việc của bạn."
+      return "Hãy thêm ngành nghề hoặc vị trí công việc hiện tại của bạn."
     }
   }
 
   if (step === 3) {
+    if (!data.target_role?.trim()) {
+      return "Hãy chọn hoặc tự nhập vai trò mục tiêu để DUO MIND định hướng rõ hơn."
+    }
+
+    if (!data.desired_outcome?.trim()) {
+      return "Hãy mô tả đầu ra mong muốn để mentor hiểu bạn muốn đạt điều gì trong ngắn hạn."
+    }
+
+    if (!data.current_focus?.trim() && !data.current_challenges?.trim()) {
+      return "Hãy thêm ít nhất trọng tâm hiện tại hoặc khó khăn lớn nhất để AI hiểu đúng bối cảnh thật của bạn."
+    }
+
     if (!data.learning_goals?.length) {
       return "Hãy chọn ít nhất một mục tiêu học tập."
     }
@@ -207,6 +219,11 @@ function buildPayload(data: OnboardingFormState): OnboardingData | null {
     industry: data.industry?.trim() || undefined,
     job_title: data.job_title?.trim() || undefined,
     years_experience: data.years_experience,
+    target_role: data.target_role?.trim() || undefined,
+    current_focus: data.current_focus?.trim() || undefined,
+    current_challenges: data.current_challenges?.trim() || undefined,
+    desired_outcome: data.desired_outcome?.trim() || undefined,
+    learning_constraints: data.learning_constraints?.trim() || undefined,
     learning_goals: data.learning_goals ?? [],
     topics_of_interest: data.topics_of_interest ?? [],
     learning_style: data.learning_style ?? "mixed",

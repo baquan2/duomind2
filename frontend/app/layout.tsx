@@ -19,8 +19,9 @@ const nunito = Nunito({
 })
 
 export const metadata: Metadata = {
-  title: "DUO MIND - Hệ thống giáo dục thông minh",
-  description: "Phân tích, đối chiếu và học tập cùng AI",
+  title: "DUO MIND - AI cố vấn và lập kế hoạch học tập",
+  description:
+    "Xác định vai trò mục tiêu, nhìn ra khoảng trống kỹ năng, xây lộ trình học tập cá nhân hóa và theo dõi tiến độ với DUO MIND.",
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {

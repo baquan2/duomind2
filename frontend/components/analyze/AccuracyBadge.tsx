@@ -5,7 +5,15 @@ import { cn } from "@/lib/utils"
 interface AccuracyBadgeProps {
   score: number | null | undefined
   assessment: string
+  compact?: boolean
 }
+
+const fallbackAccuracyScores = {
+  high: 90,
+  medium: 75,
+  low: 45,
+  unverifiable: 60,
+} as const
 
 const accuracyConfig = {
   high: {
@@ -32,25 +40,40 @@ const accuracyConfig = {
   },
 } as const
 
-export function AccuracyBadge({ score, assessment }: AccuracyBadgeProps) {
+export function AccuracyBadge({
+  score,
+  assessment,
+  compact = false,
+}: AccuracyBadgeProps) {
   const config =
     accuracyConfig[assessment as keyof typeof accuracyConfig] ??
     accuracyConfig.unverifiable
   const Icon = config.icon
   const hasNumericScore = typeof score === "number" && Number.isFinite(score)
+  const displayScore = hasNumericScore
+    ? Math.max(0, Math.min(100, Math.round(score)))
+    : fallbackAccuracyScores[
+        (assessment as keyof typeof fallbackAccuracyScores) ?? "unverifiable"
+      ] ?? fallbackAccuracyScores.unverifiable
 
   return (
     <div
       className={cn(
-        "flex min-w-[148px] flex-col items-center rounded-2xl border px-4 py-3 text-center shadow-sm",
+        compact
+          ? "inline-flex min-w-[220px] flex-row items-center gap-3 rounded-full border px-4 py-2 text-left shadow-sm"
+          : "flex min-w-[148px] flex-col items-center rounded-2xl border px-4 py-3 text-center shadow-sm",
         config.className
       )}
     >
-      <Icon className="size-6" />
-      <div className="mt-2 font-display text-3xl font-semibold leading-none">
-        {hasNumericScore ? `${score}%` : "N/A"}
+      <Icon className={compact ? "size-5 shrink-0" : "size-6"} />
+      <div className={compact ? "min-w-0" : "mt-2"}>
+        <div className={cn("font-display font-semibold leading-none", compact ? "text-xl" : "text-3xl")}>
+          {displayScore}%
+        </div>
+        <div className={cn("font-medium", compact ? "mt-1 text-xs" : "mt-1 text-xs")}>
+          {config.label}
+        </div>
       </div>
-      <div className="mt-1 text-xs font-medium">{config.label}</div>
     </div>
   )
 }

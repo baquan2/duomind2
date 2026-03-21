@@ -63,6 +63,7 @@ class MentorChatResponse(BaseModel):
     career_paths: list[dict[str, Any]] = Field(default_factory=list)
     market_signals: list[dict[str, Any]] = Field(default_factory=list)
     skill_gaps: list[dict[str, Any]] = Field(default_factory=list)
+    decision_summary: dict[str, Any] | None = None
     recommended_learning_steps: list[str] = Field(default_factory=list)
     suggested_followups: list[str] = Field(default_factory=list)
     sources: list[dict[str, Any]] = Field(default_factory=list)

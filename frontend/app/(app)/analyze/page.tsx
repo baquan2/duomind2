@@ -1,7 +1,8 @@
 "use client"
 
 import { BrainCircuit, ScanSearch } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 
 import { AnalysisResult } from "@/components/analyze/AnalysisResult"
 import { ContentInput } from "@/components/analyze/ContentInput"
@@ -13,9 +14,20 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import type { AnalyzeResult as AnalyzeResultData } from "@/types"
 
 export default function AnalyzePage() {
+  const searchParams = useSearchParams()
   const [result, setResult] = useState<AnalyzeResultData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const prefilledContent = searchParams.get("content")?.trim() || ""
+
+  useEffect(() => {
+    if (!prefilledContent) {
+      return
+    }
+
+    setResult(null)
+    setError(null)
+  }, [prefilledContent])
 
   const runAnalysis = async (runner: () => Promise<AnalyzeResultData>) => {
     setLoading(true)
@@ -38,12 +50,12 @@ export default function AnalyzePage() {
     }
   }
 
-  const handleAnalyzeText = async (content: string) => {
-    await runAnalysis(() => analyzeContent(content))
+  const handleAnalyzeText = async (content: string, analysisGoal?: string) => {
+    await runAnalysis(() => analyzeContent(content, "vi", analysisGoal))
   }
 
-  const handleAnalyzeFile = async (file: File) => {
-    await runAnalysis(() => analyzeFile(file))
+  const handleAnalyzeFile = async (file: File, analysisGoal?: string) => {
+    await runAnalysis(() => analyzeFile(file, "vi", analysisGoal))
   }
 
   return (
@@ -71,7 +83,17 @@ export default function AnalyzePage() {
         onSubmitText={handleAnalyzeText}
         onSubmitFile={handleAnalyzeFile}
         loading={loading}
+        initialContent={prefilledContent}
       />
+
+      {prefilledContent ? (
+        <Card className="border border-primary/20 bg-primary/5">
+          <CardContent className="px-5 py-4 text-sm leading-7 text-foreground/82">
+            Nội dung này được đưa từ roadmap hoặc mentor để bạn tự kiểm tra mức độ hiểu bài. Bạn có
+            thể sửa lại ghi chú trước khi bấm <span className="font-medium text-foreground">Phân tích</span>.
+          </CardContent>
+        </Card>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive">

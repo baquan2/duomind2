@@ -9,21 +9,27 @@ import {
   Target,
   TriangleAlert,
 } from "lucide-react"
+import type { ReactNode } from "react"
 
 import { AccuracyBadge } from "@/components/analyze/AccuracyBadge"
 import { SummaryCard } from "@/components/analyze/SummaryCard"
+import { KnowledgeDetail } from "@/components/explore/KnowledgeDetail"
 import { MindMapViewer } from "@/components/mindmap/MindMapViewer"
 import { QuizContainer } from "@/components/quiz/QuizContainer"
+import { SourcesPanel } from "@/components/shared/SourcesPanel"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { getReadableGeneratedTitle } from "@/lib/generated-content"
 import type { AnalyzeResult as AnalyzeResultData } from "@/types"
 
 interface AnalysisResultProps {
   result: AnalyzeResultData
 }
 
-const quickLinks = [
+const QUICK_LINKS = [
+  { href: "#kien-thuc-dung", label: "Kiến thức đúng" },
   { href: "#tong-quan", label: "Tổng quan" },
+  { href: "#nguon-xac-minh", label: "Nguồn" },
   { href: "#dinh-chinh", label: "Đính chính" },
   { href: "#mind-map", label: "Mind map" },
   { href: "#on-tap", label: "Ôn tập" },
@@ -31,6 +37,16 @@ const quickLinks = [
 
 export function AnalysisResult({ result }: AnalysisResultProps) {
   const sourceLabel = result.source_label || "Nội dung nhập tay"
+  const hasSources = result.sources.length > 0
+  const displayTitle = getReadableGeneratedTitle(
+    result.title,
+    result.knowledge_detail_data?.title,
+    result.input_preview,
+    result.summary
+  )
+  const links = hasSources
+    ? QUICK_LINKS
+    : QUICK_LINKS.filter((link) => link.href !== "#nguon-xac-minh")
 
   return (
     <motion.div
@@ -39,8 +55,8 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
       transition={{ duration: 0.28, ease: "easeOut" }}
       className="space-y-5"
     >
-      <div className="flex flex-col gap-5 rounded-[2rem] border border-border/70 bg-[linear-gradient(135deg,_rgba(15,118,110,0.08),_rgba(255,247,221,0.78))] p-6 shadow-sm shadow-primary/10 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 flex-1 space-y-4">
+      <div className="rounded-[2rem] border border-border/70 bg-[linear-gradient(135deg,_rgba(15,118,110,0.08),_rgba(255,247,221,0.78))] p-6 shadow-sm shadow-primary/10">
+        <div className="space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-primary">
             <Sparkles className="size-3.5" />
             Kết quả phân tích
@@ -48,14 +64,18 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
 
           <div className="space-y-3">
             <h2 className="font-display text-3xl font-semibold text-balance">
-              {result.title}
+              {displayTitle}
             </h2>
-
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="bg-background/85">
                 <FileText className="mr-1 size-3.5" />
-                Nguồn: {sourceLabel}
+                Nguồn đầu vào: {sourceLabel}
               </Badge>
+              {hasSources ? (
+                <Badge variant="outline" className="bg-background/85">
+                  Đã đối chiếu {result.sources.length} nguồn web
+                </Badge>
+              ) : null}
             </div>
           </div>
 
@@ -70,23 +90,25 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            {quickLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:border-primary/30 hover:text-primary"
-              >
-                {link.label}
-              </a>
-            ))}
+          <div className="flex flex-wrap items-start gap-3">
+            <AccuracyBadge
+              score={result.accuracy_score}
+              assessment={result.accuracy_assessment}
+              compact
+            />
+            <div className="flex flex-wrap gap-2">
+              {links.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:border-primary/30 hover:text-primary"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
           </div>
         </div>
-
-        <AccuracyBadge
-          score={result.accuracy_score}
-          assessment={result.accuracy_assessment}
-        />
       </div>
 
       <section id="tong-quan" className="space-y-4 scroll-mt-24">
@@ -95,8 +117,32 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
           title="Tổng quan và điểm chính"
           description="Đọc phần tóm tắt trước để nắm ý cốt lõi, sau đó quét nhanh các điểm quan trọng."
         />
-        <SummaryCard summary={result.summary} keyPoints={result.key_points} />
+        <SummaryCard
+          summary={result.summary}
+          keyPoints={result.key_points}
+          knowledgeDetailData={result.knowledge_detail_data}
+        />
       </section>
+
+      <section id="kien-thuc-dung" className="space-y-4 scroll-mt-24">
+        <SectionTitle
+          icon={<BookOpenCheck className="size-5 text-primary" />}
+          title="Kiến thức đúng cần nắm"
+          description="Phần này trình bày lại chủ đề theo đúng trục khái niệm, cơ chế, ví dụ và ứng dụng để bạn hiểu đúng sau khi xem phần đánh giá."
+        />
+        <KnowledgeDetail data={result.knowledge_detail_data} />
+      </section>
+
+      {hasSources ? (
+        <section id="nguon-xac-minh" className="space-y-4 scroll-mt-24">
+          <SectionTitle
+            icon={<BookOpenCheck className="size-5 text-primary" />}
+            title="Nguồn xác minh"
+            description="Các nguồn này được dùng để kiểm tra lại tính đúng sai của nội dung và giảm việc model trả lời theo trí nhớ mơ hồ."
+          />
+          <SourcesPanel sources={result.sources} />
+        </section>
+      ) : null}
 
       <section id="dinh-chinh" className="space-y-4 scroll-mt-24">
         <SectionTitle
@@ -189,7 +235,7 @@ function SectionTitle({
   title,
   description,
 }: {
-  icon: React.ReactNode
+  icon: ReactNode
   title: string
   description: string
 }) {

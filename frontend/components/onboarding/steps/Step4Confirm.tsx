@@ -14,6 +14,7 @@ import {
   EDUCATION_OPTIONS,
   GOAL_OPTIONS,
   STATUS_OPTIONS,
+  TARGET_ROLE_OPTIONS,
   TOPIC_OPTIONS,
   getOptionLabel,
   getOptionLabels,
@@ -26,17 +27,25 @@ interface Step4ConfirmProps {
 }
 
 const LOADING_STAGES = [
-  { label: "AI đang đọc hồ sơ học tập", hint: "Tổng hợp độ tuổi, bối cảnh và quỹ thời gian học." },
-  { label: "AI đang xác định learning persona", hint: "Suy luận cách dạy, mức độ khó và kiểu ví dụ phù hợp." },
-  { label: "AI đang cá nhân hóa chiến lược dạy", hint: "Điều chỉnh tốc độ, độ sâu kiến thức và lượng nội dung phù hợp." },
-  { label: "AI đang hoàn thiện gợi ý mở đầu", hint: "Chuẩn bị persona và các chủ đề nên học trước cho bạn." },
+  {
+    label: "AI đang đọc hồ sơ học tập",
+    hint: "Tổng hợp độ tuổi, bối cảnh và quỹ thời gian học của bạn.",
+  },
+  {
+    label: "AI đang xác định learning persona",
+    hint: "Suy luận cách dạy, mức độ khó và kiểu ví dụ phù hợp.",
+  },
+  {
+    label: "AI đang cá nhân hóa chiến lược dạy",
+    hint: "Điều chỉnh tốc độ, độ sâu kiến thức và trọng tâm theo mục tiêu nghề nghiệp.",
+  },
+  {
+    label: "AI đang hoàn thiện gợi ý mở đầu",
+    hint: "Chuẩn bị persona và các chủ đề nên học trước cho bạn.",
+  },
 ]
 
-export function Step4Confirm({
-  data,
-  aiResult,
-  loading,
-}: Step4ConfirmProps) {
+export function Step4Confirm({ data, aiResult, loading }: Step4ConfirmProps) {
   const [activeStage, setActiveStage] = useState(0)
 
   useEffect(() => {
@@ -131,8 +140,7 @@ export function Step4Confirm({
         <div className="space-y-2">
           <h3 className="font-display text-2xl font-semibold">AI đã hiểu bạn rõ hơn</h3>
           <p className="text-sm text-muted-foreground">
-            Persona này sẽ được dùng để cá nhân hóa cách giải thích, độ khó và đề xuất học
-            tập.
+            Persona này sẽ được dùng để cá nhân hóa mentor, roadmap và cách giải thích trong toàn hệ thống.
           </p>
         </div>
 
@@ -140,13 +148,21 @@ export function Step4Confirm({
           <CardContent className="space-y-3 p-5">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-primary/70">AI Persona</p>
-              <Badge className="mt-2 border-0 bg-primary text-primary-foreground">
-                {aiResult.ai_persona}
-              </Badge>
+              <Badge className="mt-2 border-0 bg-primary text-primary-foreground">{aiResult.ai_persona}</Badge>
             </div>
-            <p className="text-sm leading-6 text-foreground/85">
-              {aiResult.ai_persona_description}
-            </p>
+            <p className="text-sm leading-6 text-foreground/85">{aiResult.ai_persona_description}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/70 bg-card/92 text-left">
+          <CardContent className="space-y-3 p-5 text-sm">
+            <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">DUO MIND đã ghi nhớ</p>
+            {data.target_role ? <SummaryLine label="Mục tiêu nghề nghiệp" value={data.target_role} /> : null}
+            {data.desired_outcome ? <SummaryLine label="Đầu ra mong muốn" value={data.desired_outcome} /> : null}
+            {data.current_focus ? <SummaryLine label="Trọng tâm hiện tại" value={data.current_focus} /> : null}
+            {data.current_challenges ? <SummaryLine label="Khó khăn hiện tại" value={data.current_challenges} /> : null}
+            {data.learning_constraints ? <SummaryLine label="Ràng buộc học tập" value={data.learning_constraints} /> : null}
+            <SummaryLine label="Quỹ học mỗi ngày" value={`${data.daily_study_minutes ?? 30} phút`} />
           </CardContent>
         </Card>
 
@@ -164,7 +180,7 @@ export function Step4Confirm({
         <div>
           <h2 className="font-display text-2xl font-semibold">Xác nhận thông tin</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Kiểm tra nhanh trước khi gửi để AI phân loại persona cho bạn.
+            Kiểm tra nhanh trước khi gửi để AI phân tích hồ sơ cho bạn.
           </p>
         </div>
       </div>
@@ -175,11 +191,21 @@ export function Step4Confirm({
           <SummaryLine label="Trạng thái" value={getOptionLabel(data.status, STATUS_OPTIONS)} />
           <SummaryLine label="Trình độ" value={getOptionLabel(data.education_level, EDUCATION_OPTIONS)} />
           {data.major ? <SummaryLine label="Chuyên ngành" value={data.major} /> : null}
-          {data.school_name ? <SummaryLine label="Trường" value={data.school_name} /> : null}
+          {data.school_name ? <SummaryLine label="Trường học" value={data.school_name} /> : null}
           {data.industry ? <SummaryLine label="Ngành nghề" value={data.industry} /> : null}
-          {data.job_title ? <SummaryLine label="Vị trí" value={data.job_title} /> : null}
-          <SummaryLine label="Mục tiêu" value={getOptionLabels(data.learning_goals, GOAL_OPTIONS)} />
-          <SummaryLine label="Chủ đề" value={getOptionLabels(data.topics_of_interest, TOPIC_OPTIONS)} />
+          {data.job_title ? <SummaryLine label="Vị trí hiện tại" value={data.job_title} /> : null}
+          {data.target_role ? (
+            <SummaryLine
+              label="Vai trò mục tiêu"
+              value={getOptionLabel(data.target_role, TARGET_ROLE_OPTIONS)}
+            />
+          ) : null}
+          {data.desired_outcome ? <SummaryLine label="Đầu ra mong muốn" value={data.desired_outcome} /> : null}
+          {data.current_focus ? <SummaryLine label="Trọng tâm hiện tại" value={data.current_focus} /> : null}
+          {data.current_challenges ? <SummaryLine label="Khó khăn hiện tại" value={data.current_challenges} /> : null}
+          {data.learning_constraints ? <SummaryLine label="Ràng buộc học tập" value={data.learning_constraints} /> : null}
+          <SummaryLine label="Mục tiêu học tập" value={getOptionLabels(data.learning_goals, GOAL_OPTIONS)} />
+          <SummaryLine label="Chủ đề quan tâm" value={getOptionLabels(data.topics_of_interest, TOPIC_OPTIONS)} />
           <SummaryLine label="Thời gian học" value={`${data.daily_study_minutes ?? 30} phút/ngày`} />
         </CardContent>
       </Card>

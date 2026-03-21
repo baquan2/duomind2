@@ -27,14 +27,7 @@ export function stripSourceLabel(userInput?: string | null) {
 }
 
 export function buildInputPreview(content?: string | null, maxChars = 180) {
+  void maxChars
   const normalized = (content || "").replace(/\s+/g, " ").trim()
-  if (!normalized) {
-    return ""
-  }
-
-  if (normalized.length <= maxChars) {
-    return normalized
-  }
-
-  return `${normalized.slice(0, maxChars).trimEnd()}...`
+  return normalized
 }

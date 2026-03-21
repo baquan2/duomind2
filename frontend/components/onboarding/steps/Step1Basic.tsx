@@ -3,8 +3,8 @@
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Slider } from "@/components/ui/slider"
-import type { OnboardingData } from "@/types"
 import { cn } from "@/lib/utils"
+import type { OnboardingData } from "@/types"
 
 import { AGE_RANGES, STATUS_OPTIONS } from "../options"
 
@@ -27,16 +27,16 @@ export function Step1Basic({ data, onChange }: Step1BasicProps) {
         <div>
           <h2 className="font-display text-2xl font-semibold">Cho DUO MIND biết bạn là ai</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            AI sẽ được tinh chỉnh theo bối cảnh học tập, quỹ thời gian và giai đoạn hiện tại
+            AI sẽ điều chỉnh mentor, tốc độ học và độ sâu nội dung theo đúng bối cảnh hiện tại
             của bạn.
           </p>
         </div>
       </div>
 
       <div className="space-y-3">
-        <Label className="text-base font-medium">Độ tuổi của bạn?</Label>
+        <Label className="text-base font-medium">Độ tuổi của bạn</Label>
         <RadioGroup
-          value={data.age_range}
+          value={data.age_range ?? ""}
           onValueChange={(value) => onChange({ age_range: value as OnboardingData["age_range"] })}
           className="grid gap-3 sm:grid-cols-2"
         >
@@ -59,7 +59,7 @@ export function Step1Basic({ data, onChange }: Step1BasicProps) {
       </div>
 
       <div className="space-y-3">
-        <Label className="text-base font-medium">Hiện tại bạn đang ở trạng thái nào?</Label>
+        <Label className="text-base font-medium">Hiện tại bạn đang ở trạng thái nào</Label>
         <div className="grid gap-3 sm:grid-cols-2">
           {STATUS_OPTIONS.map(({ value, label, desc }) => (
             <button
@@ -87,8 +87,8 @@ export function Step1Basic({ data, onChange }: Step1BasicProps) {
             <span className="text-primary">{dailyStudyMinutes} phút</span>
           </Label>
           <p className="text-sm text-muted-foreground">
-            DUO MIND sẽ dùng thông tin này để điều chỉnh độ sâu kiến thức, tốc độ giải thích
-            và lượng nội dung phù hợp với bạn.
+            DUO MIND sẽ dùng thông tin này để điều chỉnh độ sâu kiến thức, tốc độ giải thích và
+            lượng nội dung phù hợp với bạn.
           </p>
         </div>
 

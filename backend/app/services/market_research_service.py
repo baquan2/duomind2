@@ -79,7 +79,8 @@ def _build_queries(
     industry = normalize_text(str((onboarding or {}).get("industry") or ""))
     job_title = normalize_text(str((onboarding or {}).get("job_title") or ""))
     major = normalize_text(str((onboarding or {}).get("major") or ""))
-    role_hint = job_title or major or industry
+    target_role = normalize_text(str((onboarding or {}).get("target_role") or ""))
+    role_hint = target_role or job_title or major or industry
 
     queries = [normalized_message]
 

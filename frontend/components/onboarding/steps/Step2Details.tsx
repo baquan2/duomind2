@@ -29,10 +29,10 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
           Bước 2
         </div>
         <div>
-          <h2 className="font-display text-2xl font-semibold">Thêm thông tin chi tiết</h2>
+          <h2 className="font-display text-2xl font-semibold">Thêm bối cảnh hiện tại</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Độ khó, ví dụ và cách diễn giải sẽ được điều chỉnh dựa trên nền tảng hiện tại
-            của bạn.
+            DUO MIND cần biết bạn đang học hay làm trong môi trường nào để gợi ý ví dụ và roadmap
+            sát thực tế hơn.
           </p>
         </div>
       </div>
@@ -47,7 +47,7 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>Trình độ</Label>
+            <Label>Trình độ học tập</Label>
             <Select
               value={data.education_level ?? "__empty__"}
               onValueChange={(value) =>
@@ -74,18 +74,18 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>Chuyên ngành / môn học chính</Label>
+            <Label>Chuyên ngành hoặc môn học chính</Label>
             <Input
-              placeholder="VD: Công nghệ thông tin, Y khoa, Kinh tế"
+              placeholder="Ví dụ: Công nghệ thông tin, Y khoa, Kinh tế"
               value={data.major ?? ""}
               onChange={(event) => onChange({ major: event.target.value })}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Trường (tùy chọn)</Label>
+            <Label>Trường học</Label>
             <Input
-              placeholder="Tên trường của bạn"
+              placeholder="Tên trường hoặc nơi bạn đang học"
               value={data.school_name ?? ""}
               onChange={(event) => onChange({ school_name: event.target.value })}
             />
@@ -98,23 +98,23 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
           <div>
             <p className="text-sm font-medium text-emerald-800">Thông tin công việc</p>
             <p className="mt-1 text-sm text-emerald-700/80">
-              AI sẽ ưu tiên tình huống và case study gần với bối cảnh nghề nghiệp của bạn.
+              AI sẽ ưu tiên case study và ví dụ gần với bối cảnh nghề nghiệp hiện tại của bạn.
             </p>
           </div>
 
           <div className="space-y-2">
             <Label>Ngành nghề</Label>
             <Input
-              placeholder="VD: Công nghệ, Y tế, Giáo dục, Marketing"
+              placeholder="Ví dụ: Công nghệ, Giáo dục, Marketing, Tài chính"
               value={data.industry ?? ""}
               onChange={(event) => onChange({ industry: event.target.value })}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Chức vụ / vị trí</Label>
+            <Label>Chức danh hoặc vị trí hiện tại</Label>
             <Input
-              placeholder="VD: Developer, Marketing Manager, Giáo viên"
+              placeholder="Ví dụ: Data Analyst, Giáo viên, QA Engineer"
               value={data.job_title ?? ""}
               onChange={(event) => onChange({ job_title: event.target.value })}
             />
@@ -125,8 +125,8 @@ export function Step2Details({ data, onChange }: Step2DetailsProps) {
       {!isStudent && !isWorking ? (
         <div className="rounded-3xl border border-border bg-muted/40 p-5">
           <p className="text-sm text-muted-foreground">
-            Bạn đã chọn trạng thái khác. Ở bước tiếp theo, bạn có thể mô tả mục tiêu và
-            chủ đề mình muốn học để AI cá nhân hóa trải nghiệm.
+            Bạn đang ở trạng thái linh hoạt. Ở bước tiếp theo, hãy mô tả rõ mục tiêu nghề nghiệp và
+            đầu ra mong muốn để AI cá nhân hóa tốt hơn.
           </p>
         </div>
       ) : null}

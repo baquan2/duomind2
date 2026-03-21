@@ -1,10 +1,6 @@
-"use client"
-
 import { BrainCircuit, Sparkles } from "lucide-react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import type { FormEvent } from "react"
-import { Suspense, useState } from "react"
+import { redirect } from "next/navigation"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -17,38 +13,75 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@/lib/supabase/server"
 
-function LoginForm() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const supabase = createClient()
+type LoginPageProps = {
+  searchParams?: {
+    error?: string | string[]
+    redirect?: string | string[]
+  }
+}
 
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+function getSingleValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value
+}
 
-  const redirectTo = searchParams.get("redirect") || "/dashboard"
+function sanitizeRedirect(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard"
+  }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setLoading(true)
-    setError("")
+  return value
+}
 
+function mapAuthError(message: string) {
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes("invalid login credentials")) {
+    return "Email hoặc mật khẩu chưa đúng."
+  }
+
+  if (normalized.includes("email not confirmed")) {
+    return "Tài khoản chưa xác nhận email. Hãy kiểm tra hộp thư và xác nhận trước khi đăng nhập."
+  }
+
+  if (normalized.includes("network")) {
+    return "Không thể kết nối đến hệ thống xác thực. Hãy thử lại sau."
+  }
+
+  return "Không thể đăng nhập lúc này. Hãy thử lại."
+}
+
+export default function LoginPage({ searchParams }: LoginPageProps) {
+  const error = getSingleValue(searchParams?.error)
+  const redirectTo = sanitizeRedirect(getSingleValue(searchParams?.redirect))
+
+  async function loginAction(formData: FormData) {
+    "use server"
+
+    const email = String(formData.get("email") || "").trim()
+    const password = String(formData.get("password") || "")
+    const requestedRedirect = sanitizeRedirect(String(formData.get("redirectTo") || ""))
+
+    if (!email || !password) {
+      redirect(
+        `/login?error=${encodeURIComponent("Vui lòng nhập đầy đủ email và mật khẩu.")}&redirect=${encodeURIComponent(requestedRedirect)}`
+      )
+    }
+
+    const supabase = createClient()
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
     if (signInError) {
-      setError(signInError.message)
-      setLoading(false)
-      return
+      redirect(
+        `/login?error=${encodeURIComponent(mapAuthError(signInError.message))}&redirect=${encodeURIComponent(requestedRedirect)}`
+      )
     }
 
-    router.push(redirectTo)
-    router.refresh()
+    redirect(requestedRedirect)
   }
 
   return (
@@ -61,11 +94,11 @@ function LoginForm() {
           </div>
           <div className="max-w-xl space-y-4">
             <h1 className="font-display text-5xl font-semibold leading-tight">
-              Phân tích kiến thức và học sâu hơn với AI đồng hành.
+              Đăng nhập để tiếp tục lộ trình, mentor và tiến trình học tập của bạn.
             </h1>
             <p className="text-lg text-white/76">
-              Đăng nhập để mở onboarding, khám phá, phân tích và quiz trong cùng một
-              hành trình học tập.
+              DUO MIND được thiết kế như một AI cố vấn và bộ lập kế hoạch học tập. Sau khi đăng nhập,
+              hệ thống sẽ đưa bạn đến đúng bước tiếp theo trong hành trình học tập.
             </p>
           </div>
         </div>
@@ -77,8 +110,8 @@ function LoginForm() {
               Sẵn sàng với DUO MIND
             </div>
             <p className="mt-2 text-sm leading-6 text-white/70">
-              Sau đăng nhập, người dùng mới sẽ vào onboarding wizard. Người dùng cũ có
-              thể tiếp tục dashboard, lịch sử và các phiên học đang mở.
+              Nếu đây là lần đầu đăng nhập, bạn sẽ được đưa vào onboarding để khai báo vai trò mục tiêu,
+              mục tiêu và bối cảnh học tập. Nếu đã có hồ sơ, bạn sẽ vào dashboard và lộ trình ngay.
             </p>
           </div>
         </div>
@@ -89,25 +122,27 @@ function LoginForm() {
           <CardHeader className="space-y-3">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
               <Sparkles className="size-3.5" />
-              Cấu hình đăng nhập
+              Đăng nhập
             </div>
             <div>
-              <CardTitle className="text-3xl font-semibold">Đăng nhập</CardTitle>
+              <CardTitle className="text-3xl font-semibold">Chào mừng quay lại</CardTitle>
               <CardDescription className="mt-2 text-base">
-                Truy cập dashboard DUO MIND bằng Supabase Auth.
+                Đăng nhập bằng tài khoản Supabase để mở dashboard DUO MIND.
               </CardDescription>
             </div>
           </CardHeader>
           <CardContent>
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form className="space-y-4" action={loginAction}>
+              <input type="hidden" name="redirectTo" value={redirectTo} />
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
+                  name="email"
                   type="email"
                   placeholder="you@example.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
                   required
                 />
               </div>
@@ -116,10 +151,10 @@ function LoginForm() {
                 <Label htmlFor="password">Mật khẩu</Label>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
                   placeholder="Nhập mật khẩu"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
                   required
                 />
               </div>
@@ -130,8 +165,8 @@ function LoginForm() {
                 </Alert>
               ) : null}
 
-              <Button className="w-full" type="submit" disabled={loading}>
-                {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+              <Button className="w-full" type="submit">
+                Đăng nhập
               </Button>
             </form>
 
@@ -145,13 +180,5 @@ function LoginForm() {
         </Card>
       </section>
     </main>
-  )
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      <LoginForm />
-    </Suspense>
   )
 }
