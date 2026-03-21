@@ -76,11 +76,15 @@ def _build_queries(
     intent: MentorIntent,
 ) -> list[str]:
     normalized_message = normalize_text(message)
+    lowered_message = normalized_message.lower()
     industry = normalize_text(str((onboarding or {}).get("industry") or ""))
     job_title = normalize_text(str((onboarding or {}).get("job_title") or ""))
     major = normalize_text(str((onboarding or {}).get("major") or ""))
     target_role = normalize_text(str((onboarding or {}).get("target_role") or ""))
     role_hint = target_role or job_title or major or industry
+    direct_skill_lookup = any(marker in lowered_message for marker in ("tuyển dụng", "tuyen dung", "jd", "job description")) and any(
+        marker in lowered_message for marker in ("kỹ năng", "ky nang", "skills", "liệt kê", "liet ke", "yêu cầu", "yeu cau")
+    )
 
     queries = [normalized_message]
 

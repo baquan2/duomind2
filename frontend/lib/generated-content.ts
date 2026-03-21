@@ -181,15 +181,8 @@ export function getAnalyzeOverviewBullets(
   knowledgeDetailData?: KnowledgeDetailData,
   limit = 5
 ) {
-  const overview = knowledgeDetailData?.section_briefs?.overview
-    ?.map((item) => normalizeText(item))
-    .filter((item) => item && !hasTrailingEllipsis(item))
-  if (overview?.length) {
-    return overview.slice(0, limit)
-  }
-
   const summaryBullets = splitBullets(summary).filter((item) => !hasTrailingEllipsis(item))
-  if (summaryBullets.length) {
+  if (summaryBullets.length >= 3) {
     return summaryBullets.slice(0, limit)
   }
 
@@ -205,6 +198,13 @@ export function getAnalyzeOverviewBullets(
     return sectionBullets
   }
 
+  const overview = knowledgeDetailData?.section_briefs?.overview
+    ?.map((item) => normalizeText(item))
+    .filter((item) => item && !hasTrailingEllipsis(item))
+  if (overview?.length) {
+    return overview.slice(0, limit)
+  }
+
   return keyPoints
     .map((item) => normalizeText(item))
     .filter((item) => item && !hasTrailingEllipsis(item))
@@ -216,23 +216,23 @@ export function getAnalyzeTakeawayBullets(
   knowledgeDetailData?: KnowledgeDetailData,
   limit = 5
 ) {
-  const takeaways = knowledgeDetailData?.section_briefs?.core_takeaways
-    ?.map((item) => normalizeText(item))
-    .filter((item) => item && !hasTrailingEllipsis(item))
-  if (takeaways?.length) {
-    return takeaways.slice(0, limit)
-  }
-
   const cleanedKeyPoints = keyPoints
     .map((item) => normalizeText(item))
     .filter((item) => item && !hasTrailingEllipsis(item))
-  if (cleanedKeyPoints.length) {
+  if (cleanedKeyPoints.length >= 3) {
     return cleanedKeyPoints.slice(0, limit)
   }
 
   const sectionBullets = bulletsFromSections(knowledgeDetailData, TAKEAWAY_SECTION_KEYS, limit)
   if (sectionBullets.length) {
     return sectionBullets
+  }
+
+  const takeaways = knowledgeDetailData?.section_briefs?.core_takeaways
+    ?.map((item) => normalizeText(item))
+    .filter((item) => item && !hasTrailingEllipsis(item))
+  if (takeaways?.length) {
+    return takeaways.slice(0, limit)
   }
 
   return []

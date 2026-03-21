@@ -54,9 +54,12 @@ export interface SourceReference {
   snippet?: string | null
 }
 
+export type AnalyzeVerdict = "correct" | "incorrect"
+
 export interface AnalyzeResult {
   session_id: string
   title: string
+  verdict: AnalyzeVerdict
   accuracy_score: number | null
   accuracy_assessment: "high" | "medium" | "low" | "unverifiable"
   summary: string
@@ -285,6 +288,7 @@ export interface LearningSession {
   summary?: string
   key_points?: string[]
   topic_tags: string[]
+  verdict?: AnalyzeVerdict | null
   accuracy_score?: number | null
   accuracy_assessment?: string | null
   corrections?: Correction[]

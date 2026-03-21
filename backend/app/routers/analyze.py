@@ -26,6 +26,8 @@ from app.utils.content_blueprint import (
 from app.utils.core_ai_prompts import (
     build_analyze_blueprint_prompt,
     build_analyze_core_prompt,
+    build_analyze_query_plan_prompt,
+    build_analyze_repair_prompt,
 )
 from app.utils.fallbacks import build_basic_mindmap
 from app.utils.helpers import (
@@ -94,6 +96,64 @@ ANALYZE_CONTENT_PREFIXES = (
     "noi dung cua toi",
     "ghi chu",
     "doan giai thich",
+)
+
+STRUCTURE_ANALYSIS_MARKERS = (
+    "gom gi",
+    "gom nhung gi",
+    "bao gom gi",
+    "bao gom nhung gi",
+    "nhung phan nao",
+    "phan nao",
+    "thanh phan nao",
+    "thanh phan chinh",
+    "cau truc",
+)
+
+ANALYZE_EXPLANATORY_MARKERS = (
+    " la ",
+    " khong phai ",
+    " khac voi ",
+    " dung de ",
+    " dung khi ",
+    " bao gom ",
+    " gom ",
+    " thanh phan ",
+    " vai tro ",
+    " quan he ",
+    " dau vao ",
+    " xu ly ",
+    " dau ra ",
+    " vi ",
+    " do ",
+    " neu ",
+    " khi ",
+    " gioi han ",
+    " nham lan ",
+)
+
+ANALYZE_MECHANISM_MARKERS = (
+    " co che ",
+    " logic ",
+    " dau vao ",
+    " xu ly ",
+    " dau ra ",
+    " dan den ",
+    " tao ra ",
+    " van hanh ",
+    " vi ",
+    " do ",
+    " neu ",
+    " khi ",
+)
+
+ANALYZE_BOUNDARY_MARKERS = (
+    " khong phai ",
+    " khac voi ",
+    " gioi han ",
+    " chi dung khi ",
+    " chi co gia tri khi ",
+    " khong dong nghia ",
 )
 
 SECTION_DISPLAY_TITLES = {
@@ -240,7 +300,7 @@ def _extract_analysis_goal(content: str, analysis_goal_override: str | None = No
     return normalize_text(content)
 
 
-def _extract_analysis_focus(content: str, analysis_goal: str) -> str:
+def _legacy_extract_analysis_focus(content: str, analysis_goal: str) -> str:
     lines = [normalize_text(line) for line in content.splitlines() if normalize_text(line)]
     for line in lines[:8]:
         extracted = _extract_prefixed_value(
@@ -250,7 +310,7 @@ def _extract_analysis_focus(content: str, analysis_goal: str) -> str:
         if extracted:
             return normalize_topic_phrase(extracted)
 
-    if _detect_analysis_kind(analysis_goal) in {"definition", "mechanism"}:
+    if _detect_analysis_kind(analysis_goal) in {"definition", "mechanism", "structure"}:
         compact = build_core_title(analysis_goal, "")
         if compact and not _analysis_title_needs_cleanup(compact):
             return compact
@@ -328,6 +388,61 @@ def _clip_words(text: str, max_words: int) -> str:
     return " ".join(words[:max_words]).rstrip(" ,;:.") + "..."
 
 
+def _split_analysis_bullets(text: object) -> list[str]:
+    if not isinstance(text, str):
+        return []
+    return [
+        normalize_text(line.lstrip("-*• ").strip())
+        for line in text.splitlines()
+        if normalize_text(line.lstrip("-*• ").strip())
+    ]
+
+
+def _contains_any_marker(text: str, markers: tuple[str, ...]) -> bool:
+    lowered = f" {strip_accents(normalize_text(text)).lower()} "
+    return any(marker in lowered for marker in markers)
+
+
+def _is_substantive_analysis_line(
+    text: str,
+    focus_topic: str,
+    *,
+    expect_role: str | None = None,
+) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned or _contains_trailing_ellipsis(cleaned) or _looks_generic_analysis_text(cleaned):
+        return False
+    if len(cleaned.split()) < 8:
+        return False
+
+    if _focus_overlap_ratio(cleaned, focus_topic) >= 0.18:
+        return True
+
+    if expect_role == "mechanism":
+        return _contains_any_marker(cleaned, ANALYZE_MECHANISM_MARKERS)
+    if expect_role == "structure":
+        return _contains_any_marker(cleaned, STRUCTURE_ANALYSIS_MARKERS + (" thanh phan ", " vai tro ", " quan he "))
+    if expect_role == "boundary":
+        return _contains_any_marker(cleaned, ANALYZE_BOUNDARY_MARKERS)
+
+    return _contains_any_marker(cleaned, ANALYZE_EXPLANATORY_MARKERS)
+
+
+def _analysis_summary_needs_fallback(summary: str, focus_topic: str) -> bool:
+    bullets = _split_analysis_bullets(summary)
+    if len(bullets) < 4:
+        return True
+
+    useful = sum(1 for bullet in bullets if _is_substantive_analysis_line(bullet, focus_topic))
+    short = sum(1 for bullet in bullets if len(bullet.split()) < 8)
+    overlaps = 0
+    for index in range(len(bullets) - 1):
+        if semantic_overlap_ratio(bullets[index], bullets[index + 1]) > 0.82:
+            overlaps += 1
+
+    return useful < 3 or short >= 2 or overlaps >= 2
+
+
 def _parse_compare_subjects(goal: str) -> tuple[str, str] | None:
     normalized = _strip_known_question_prefixes(goal)
     patterns = [
@@ -347,10 +462,17 @@ def _parse_compare_subjects(goal: str) -> tuple[str, str] | None:
     return None
 
 
+def _is_structure_analysis_request(goal: str) -> bool:
+    lowered = strip_accents(normalize_text(goal)).lower()
+    return any(marker in lowered for marker in STRUCTURE_ANALYSIS_MARKERS)
+
+
 def _detect_analysis_kind(goal: str) -> str:
     lowered = strip_accents(normalize_text(goal)).lower()
     if _parse_compare_subjects(goal):
         return "comparison"
+    if _is_structure_analysis_request(goal):
+        return "structure"
     if "la gi" in lowered:
         return "definition"
     if "hoat dong nhu the nao" in lowered or "van hanh nhu the nao" in lowered:
@@ -413,7 +535,7 @@ def _normalize_analysis_plan(
         return fallback
 
     analysis_kind = normalize_text(str(raw_plan.get("analysis_kind") or fallback["analysis_kind"])).lower()
-    if analysis_kind not in {"definition", "comparison", "mechanism", "review"}:
+    if analysis_kind not in {"definition", "comparison", "mechanism", "structure", "review"}:
         analysis_kind = fallback["analysis_kind"]
 
     main_question = normalize_text(str(raw_plan.get("main_question") or fallback["main_question"]))
@@ -474,12 +596,51 @@ def _normalize_analysis_plan(
     }
 
 
+def _should_use_llm_analysis_plan(analysis_goal: str, analysis_content: str) -> bool:
+    analysis_kind = _detect_analysis_kind(analysis_goal)
+    question_length = len(normalize_text(analysis_goal).split())
+    content_length = len(normalize_text(analysis_content).split())
+    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and question_length <= 22 and content_length <= 220:
+        return False
+    return True
+
+
 async def _build_analysis_plan(
     analysis_goal: str,
     focus_topic: str,
     analysis_content: str,
 ) -> dict[str, Any]:
-    return _heuristic_analysis_plan(analysis_goal, focus_topic, analysis_content)
+    fallback = _heuristic_analysis_plan(analysis_goal, focus_topic, analysis_content)
+    if not _should_use_llm_analysis_plan(analysis_goal, analysis_content):
+        return fallback
+    try:
+        raw_plan = await gemini.generate_json(
+            build_analyze_query_plan_prompt(
+                analysis_goal=analysis_goal,
+                focus_topic=focus_topic,
+                content=analysis_content,
+            )
+        )
+    except Exception as exc:
+        print(f"[analyze] Query plan generation failed, using heuristic plan: {exc}")
+        return fallback
+    return _normalize_analysis_plan(raw_plan, analysis_goal, focus_topic, analysis_content)
+
+
+def _should_generate_analysis_blueprint(analysis_plan: dict[str, Any], analysis_content: str) -> bool:
+    analysis_kind = normalize_text(str(analysis_plan.get("analysis_kind") or "")).lower()
+    content_length = len(normalize_text(analysis_content).split())
+    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and content_length <= 220:
+        return False
+    return True
+
+
+def _should_lookup_analysis_sources(
+    analysis_plan: dict[str, Any],
+    analysis_goal: str,
+    analysis_content: str,
+) -> bool:
+    return bool(normalize_text(analysis_goal) and normalize_text(analysis_content))
 
 
 def _build_analysis_title(analysis_goal: str, focus_topic: str) -> str:
@@ -493,7 +654,7 @@ def _build_analysis_title(analysis_goal: str, focus_topic: str) -> str:
     return normalize_topic_phrase(cleaned_goal).strip(" .") or "Phân tích nội dung"
 
 
-def _build_compact_analysis_title(analysis_goal: str, focus_topic: str) -> str:
+def _legacy_build_compact_analysis_title(analysis_goal: str, focus_topic: str) -> str:
     cleaned_goal = _strip_known_question_prefixes(analysis_goal)
     cleaned_focus = _strip_known_question_prefixes(focus_topic)
     compare_subjects = _parse_compare_subjects(cleaned_goal)
@@ -706,7 +867,7 @@ def _build_definition_knowledge_sections(
     }
 
 
-def _build_analysis_knowledge_fallback(
+def _legacy_build_analysis_knowledge_fallback(
     analysis_goal: str,
     focus_topic: str,
     learner_context: dict[str, str],
@@ -868,12 +1029,12 @@ def _build_analysis_fallback(
     kind = _detect_analysis_kind(analysis_goal)
     if kind == "comparison":
         return _build_compare_fallback(analysis_content, analysis_goal, focus_topic, learner_context)
-    if kind in {"definition", "mechanism"}:
+    if kind in {"definition", "mechanism", "structure"}:
         return _build_definition_fallback(analysis_content, analysis_goal, focus_topic, learner_context)
     return _build_review_fallback(analysis_content, analysis_goal, focus_topic, learner_context)
 
 
-def _analysis_result_needs_rewrite(analysis_goal: str, focus_topic: str, ai_result: dict[str, Any]) -> bool:
+def _legacy_analysis_result_needs_rewrite(analysis_goal: str, focus_topic: str, ai_result: dict[str, Any]) -> bool:
     title = normalize_text(str(ai_result.get("title") or ""))
     summary = normalize_text(str(ai_result.get("summary") or ""))
     raw_key_points = ai_result.get("key_points")
@@ -922,7 +1083,7 @@ def _analysis_result_needs_rewrite(analysis_goal: str, focus_topic: str, ai_resu
     return False
 
 
-def _violates_analysis_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
+def _legacy_violates_analysis_plan_v1(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
     must_include = [normalize_topic_phrase(str(item)) or normalize_text(str(item)) for item in plan.get("must_include", []) if str(item).strip()]
     if not must_include:
         return False
@@ -973,7 +1134,7 @@ def _violates_analysis_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> 
     return False
 
 
-def _normalize_analysis_summary(summary: object, key_points: object, fallback_summary: str) -> str:
+def _legacy_normalize_analysis_summary(summary: object, key_points: object, fallback_summary: str) -> str:
     bullets: list[str] = []
     if isinstance(summary, str):
         lowered_summary = strip_accents(normalize_text(summary)).lower()
@@ -997,7 +1158,13 @@ def _normalize_analysis_summary(summary: object, key_points: object, fallback_su
     return "\n".join(f"- {normalize_text(item)}" for item in bullets[:4])
 
 
-def _normalize_analysis_key_points(raw_points: object, fallback_points: list[str]) -> list[str]:
+def _normalize_analysis_key_points(
+    raw_points: object,
+    fallback_points: list[str],
+    *,
+    analysis_goal: str,
+    focus_topic: str,
+) -> list[str]:
     points: list[str] = []
     if isinstance(raw_points, list):
         for item in raw_points:
@@ -1012,12 +1179,12 @@ def _normalize_analysis_key_points(raw_points: object, fallback_points: list[str
             if len(points) >= 5:
                 break
 
-    if len(points) >= 4:
+    if len(points) >= 4 and not _analysis_key_points_need_fallback(analysis_goal, focus_topic, points):
         return points[:5]
     return fallback_points[:5]
 
 
-def _extract_analysis_knowledge_detail_data(
+def _legacy_extract_analysis_knowledge_detail_data_v1(
     ai_result: dict[str, Any],
     fallback_result: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1168,6 +1335,16 @@ def _apply_source_confidence(
     return accuracy_assessment, accuracy_score
 
 
+def _build_analysis_verdict(
+    accuracy_assessment: str,
+    corrections: list[Correction],
+    sources: list[dict[str, str]],
+) -> str:
+    if sources and accuracy_assessment == "high" and not corrections:
+        return "correct"
+    return "incorrect"
+
+
 def _build_analysis_mindmap_context(
     title: str,
     summary: str,
@@ -1198,7 +1375,7 @@ def _build_analysis_mindmap_points(
     return points[:5]
 
 
-async def _run_analysis(
+async def _legacy_run_analysis(
     *,
     content: str,
     language: str,
@@ -1253,19 +1430,22 @@ async def _run_analysis(
         verified_sources,
     )
     fallback_result = _build_analysis_fallback(analysis_content, focus_topic, analysis_goal, learner_context)
-    try:
-        raw_blueprint = await gemini.generate_json(
-            build_analyze_blueprint_prompt(
-                content=analysis_content,
-                language=language,
-                analysis_goal=analysis_goal,
-                focus_topic=focus_topic,
-                analysis_brief=analysis_brief,
-                source_brief=source_brief,
+    if _should_generate_analysis_blueprint(analysis_plan, analysis_content):
+        try:
+            raw_blueprint = await gemini.generate_json(
+                build_analyze_blueprint_prompt(
+                    content=analysis_content,
+                    language=language,
+                    analysis_goal=analysis_goal,
+                    focus_topic=focus_topic,
+                    analysis_brief=analysis_brief,
+                    source_brief=source_brief,
+                )
             )
-        )
-    except Exception as exc:
-        print(f"[analyze] Blueprint generation failed, using fallback blueprint: {exc}")
+        except Exception as exc:
+            print(f"[analyze] Blueprint generation failed, using fallback blueprint: {exc}")
+            raw_blueprint = (fallback_result.get("knowledge_detail_data") or {}).get("content_blueprint") or {}
+    else:
         raw_blueprint = (fallback_result.get("knowledge_detail_data") or {}).get("content_blueprint") or {}
 
     fallback_blueprint = (
@@ -1326,14 +1506,22 @@ async def _run_analysis(
 
     fallback_summary = str(fallback_result["summary"])
     fallback_points = [str(point) for point in fallback_result["key_points"]]
-    summary = _normalize_analysis_summary(ai_result.get("summary"), ai_result.get("key_points"), fallback_summary)
+    summary = _normalize_analysis_summary(
+        ai_result.get("summary"),
+        ai_result.get("key_points"),
+        fallback_summary,
+        focus_topic=focus_topic,
+    )
     knowledge_detail_data = _extract_analysis_knowledge_detail_data(ai_result, fallback_result)
     key_points = _normalize_analysis_key_points(
         ai_result.get("key_points"),
         _build_analysis_key_points_from_sections(knowledge_detail_data) or fallback_points,
+        analysis_goal=analysis_goal,
+        focus_topic=focus_topic,
     )
     corrections = _normalize_corrections(ai_result.get("corrections"))
     topic_tags = normalize_topic_tags(ai_result.get("topic_tags"), title or focus_topic or content)
+    verdict = _build_analysis_verdict(accuracy_assessment, corrections, verified_sources)
     effective_source_label = source_label or "Nội dung nhập tay"
 
     mindmap_points = list(_build_analysis_key_points_from_sections(knowledge_detail_data) or key_points)
@@ -1381,6 +1569,7 @@ async def _run_analysis(
     return AnalyzeResult(
         session_id=session["id"],
         title=title,
+        verdict=verdict,
         accuracy_score=accuracy_score,
         accuracy_assessment=accuracy_assessment,
         summary=summary,
@@ -1430,7 +1619,12 @@ def _build_analysis_knowledge_fallback(
         title=title,
         question_type=kind,
         mode="analyze",
+        main_question=analysis_goal,
+        focus_topic=focus_topic,
+        comparison_targets=_parse_compare_subjects(analysis_goal) or [],
     )
+    if kind == "structure":
+        section_briefs = _apply_structure_analysis_briefs(section_briefs, content_blueprint)
     return {
         "title": title,
         "summary": build_summary_from_briefs(section_briefs, key="detail_focus"),
@@ -1447,7 +1641,7 @@ def _build_analysis_knowledge_fallback(
     }
 
 
-def _extract_analysis_knowledge_detail_data(
+def _legacy_extract_analysis_knowledge_detail_data_v2(
     ai_result: dict[str, Any],
     fallback_result: dict[str, Any],
     *,
@@ -1468,13 +1662,22 @@ def _extract_analysis_knowledge_detail_data(
     if not isinstance(adaptation, dict):
         adaptation = {}
 
+    detail_summary = build_summary_from_briefs(
+        section_briefs,
+        key="detail_focus",
+        fallback_text=fallback_payload.get("summary") or "",
+    )
+    section_bullets = _build_analysis_key_points_from_sections(
+        {
+            "detailed_sections": normalized_sections,
+        }
+    )
+    if section_bullets:
+        detail_summary = "\n".join(f"- {item}" for item in section_bullets[:4])
+
     return {
         "title": title,
-        "summary": build_summary_from_briefs(
-            section_briefs,
-            key="detail_focus",
-            fallback_text=fallback_payload.get("summary") or "",
-        ),
+        "summary": detail_summary,
         "content_blueprint": content_blueprint,
         "section_briefs": section_briefs,
         "active_section_keys": active_section_keys,
@@ -1494,7 +1697,7 @@ def _extract_analysis_knowledge_detail_data(
     }
 
 
-def _violates_analysis_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
+def _legacy_violates_analysis_plan_v2(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
     must_include = [
         normalize_topic_phrase(str(item)) or normalize_text(str(item))
         for item in plan.get("must_include", [])
@@ -1539,10 +1742,10 @@ def _violates_analysis_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> 
             return True
 
     covered = sum(1 for item in must_include if strip_accents(item).lower() in haystack)
-    return covered < min(2, len(must_include))
+    return covered == 0
 
 
-def _analysis_result_needs_rewrite(analysis_goal: str, focus_topic: str, ai_result: dict[str, Any]) -> bool:
+def _legacy_analysis_result_needs_rewrite_v2(analysis_goal: str, focus_topic: str, ai_result: dict[str, Any]) -> bool:
     title = normalize_text(str(ai_result.get("title") or ""))
     summary = _normalize_multiline_text(ai_result.get("summary"))
     sections = ai_result.get("detailed_sections")
@@ -1590,7 +1793,7 @@ def _extract_analysis_focus(content: str, analysis_goal: str) -> str:
                 return compact
             return normalize_topic_phrase(extracted)
 
-    if _detect_analysis_kind(analysis_goal) in {"definition", "mechanism"}:
+    if _detect_analysis_kind(analysis_goal) in {"definition", "mechanism", "structure"}:
         compact = build_core_title(analysis_goal, "")
         if compact and not _analysis_title_needs_cleanup(compact):
             return compact
@@ -1621,7 +1824,136 @@ def _build_compact_analysis_title(analysis_goal: str, focus_topic: str) -> str:
     return compact or build_core_title(preferred, "Phan tich noi dung")
 
 
-def _normalize_analysis_summary(summary: object, key_points: object, fallback_summary: str) -> str:
+def _is_direct_analysis_answer(analysis_goal: str, focus_topic: str, text: str) -> bool:
+    lead = strip_accents(normalize_text(str(text or ""))).lower()
+    if not lead:
+        return False
+
+    compare_subjects = _parse_compare_subjects(analysis_goal)
+    if compare_subjects:
+        return (
+            all(strip_accents(subject).lower() in lead for subject in compare_subjects)
+            and any(marker in lead for marker in (" khac ", " phan biet ", " so sanh "))
+        )
+
+    analysis_kind = _detect_analysis_kind(analysis_goal)
+    if analysis_kind == "definition":
+        return _focus_overlap_ratio(lead, focus_topic) >= 0.34 and any(
+            marker in f" {lead} "
+            for marker in (" la ", " la mot ", " duoc dung de ", " chi ")
+        )
+    if analysis_kind == "structure":
+        return _focus_overlap_ratio(lead, focus_topic) >= 0.34 and any(
+            marker in f" {lead} "
+            for marker in (" gom ", " bao gom ", " thanh phan ", " cau truc ")
+        )
+    if analysis_kind == "mechanism":
+        return _focus_overlap_ratio(lead, focus_topic) >= 0.34 and any(
+            marker in f" {lead} "
+            for marker in (" hoat dong ", " van hanh ", " dien ra ", " bat dau ")
+        )
+    return _focus_overlap_ratio(lead, focus_topic) >= 0.24
+
+
+def _apply_structure_analysis_briefs(
+    section_briefs: dict[str, list[str]],
+    content_blueprint: dict[str, str],
+) -> dict[str, list[str]]:
+    section_briefs["overview"] = [
+        item
+        for item in [
+            normalize_text(content_blueprint.get("components", "")),
+            normalize_text(content_blueprint.get("core_definition", "")),
+            normalize_text(content_blueprint.get("mechanism", "")),
+            normalize_text(content_blueprint.get("conditions_and_limits", "")),
+        ]
+        if item
+    ][:4]
+    section_briefs["core_takeaways"] = [
+        item
+        for item in [
+            normalize_text(content_blueprint.get("components", "")),
+            normalize_text(content_blueprint.get("core_definition", "")),
+            normalize_text(content_blueprint.get("mechanism", "")),
+            normalize_text(content_blueprint.get("misconceptions", "")),
+            normalize_text(content_blueprint.get("conditions_and_limits", "")),
+        ]
+        if item
+    ][:5]
+    return section_briefs
+
+
+def _analysis_key_points_need_fallback(
+    analysis_goal: str,
+    focus_topic: str,
+    key_points: list[str],
+) -> bool:
+    if len(key_points) < 4:
+        return True
+
+    analysis_kind = _detect_analysis_kind(analysis_goal)
+    compare_subjects = _parse_compare_subjects(analysis_goal)
+    useful_points = 0
+    generic_points = 0
+    compare_points = 0
+    structure_points = 0
+    mechanism_points = 0
+    boundary_points = 0
+    repeated_pairs = 0
+
+    for index, point in enumerate(key_points):
+        cleaned = normalize_text(point)
+        if not cleaned:
+            continue
+        if _looks_generic_analysis_text(cleaned):
+            generic_points += 1
+            continue
+
+        lowered = strip_accents(cleaned).lower()
+        if compare_subjects and all(strip_accents(subject).lower() in lowered for subject in compare_subjects):
+            compare_points += 1
+        if analysis_kind == "structure" and any(
+            marker in f" {lowered} " for marker in (" gom ", " bao gom ", " thanh phan ", " cau truc ")
+        ):
+            structure_points += 1
+        if _contains_any_marker(cleaned, ANALYZE_MECHANISM_MARKERS):
+            mechanism_points += 1
+        if _contains_any_marker(cleaned, ANALYZE_BOUNDARY_MARKERS):
+            boundary_points += 1
+        if index < len(key_points) - 1 and semantic_overlap_ratio(cleaned, key_points[index + 1]) > 0.82:
+            repeated_pairs += 1
+
+        if _is_substantive_analysis_line(cleaned, focus_topic):
+            useful_points += 1
+            continue
+
+        if compare_subjects and any(strip_accents(subject).lower() in lowered for subject in compare_subjects):
+            useful_points += 1
+
+    if generic_points >= 2:
+        return True
+    if useful_points < 3:
+        return True
+    if repeated_pairs >= 2:
+        return True
+    if compare_subjects and compare_points == 0:
+        return True
+    if analysis_kind == "structure" and structure_points == 0:
+        return True
+    if analysis_kind in {"definition", "mechanism"} and mechanism_points == 0:
+        return True
+    if analysis_kind == "definition" and boundary_points == 0:
+        return True
+    return False
+
+
+def _normalize_analysis_summary(
+    summary: object,
+    key_points: object,
+    fallback_summary: str,
+    *,
+    focus_topic: str,
+) -> str:
     bullets: list[str] = []
     if isinstance(summary, str):
         lowered_summary = strip_accents(normalize_text(summary)).lower()
@@ -1646,7 +1978,129 @@ def _normalize_analysis_summary(summary: object, key_points: object, fallback_su
 
     if not bullets:
         return fallback_summary
-    return "\n".join(f"- {normalize_text(item)}" for item in bullets[:4])
+    normalized_summary = "\n".join(f"- {normalize_text(item)}" for item in bullets[:4])
+    if _analysis_summary_needs_fallback(normalized_summary, focus_topic):
+        return fallback_summary
+    return normalized_summary
+
+
+def _merge_analysis_result(
+    ai_result: object,
+    fallback_result: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(fallback_result)
+    raw = ai_result if isinstance(ai_result, dict) else {}
+
+    title = normalize_text(str(raw.get("title") or ""))
+    if title and not title.endswith("?"):
+        merged["title"] = title
+
+    summary = _normalize_multiline_text(raw.get("summary"))
+    if summary:
+        merged["summary"] = summary
+
+    key_points = _normalize_analysis_key_points(
+        raw.get("key_points"),
+        merged.get("key_points") or [],
+        analysis_goal=str(merged.get("analysis_goal") or merged.get("title") or ""),
+        focus_topic=str(merged.get("focus_topic") or merged.get("title") or ""),
+    )
+    if key_points:
+        merged["key_points"] = key_points
+
+    accuracy_assessment = normalize_text(str(raw.get("accuracy_assessment") or ""))
+    if accuracy_assessment in {"high", "medium", "low", "unverifiable"}:
+        merged["accuracy_assessment"] = accuracy_assessment
+
+    accuracy_reasoning = normalize_text(str(raw.get("accuracy_reasoning") or ""))
+    if accuracy_reasoning:
+        merged["accuracy_reasoning"] = accuracy_reasoning
+
+    raw_accuracy_score = raw.get("accuracy_score")
+    if isinstance(raw_accuracy_score, bool):
+        merged["accuracy_score"] = int(raw_accuracy_score)
+    elif isinstance(raw_accuracy_score, (int, float)):
+        merged["accuracy_score"] = max(0, min(100, int(raw_accuracy_score)))
+
+    corrections = _normalize_corrections(raw.get("corrections"))
+    if corrections:
+        merged["corrections"] = [item.model_dump() for item in corrections]
+
+    topic_tags = normalize_topic_tags(raw.get("topic_tags"), merged.get("title") or "")
+    if topic_tags:
+        merged["topic_tags"] = topic_tags
+
+    fallback_knowledge = fallback_result.get("knowledge_detail_data") or {}
+    fallback_sections = fallback_knowledge.get("detailed_sections") or {}
+    raw_sections = raw.get("detailed_sections")
+    merged_sections = {key: dict(value) for key, value in fallback_sections.items()}
+    if isinstance(raw_sections, dict):
+        for key in SECTION_ORDER:
+            raw_section = raw_sections.get(key)
+            if not isinstance(raw_section, dict):
+                continue
+            fallback_section = merged_sections.get(key) or {
+                "title": SECTION_DISPLAY_TITLES[key],
+                "content": "",
+            }
+            merged_sections[key] = {
+                "title": normalize_text(
+                    str(raw_section.get("title") or fallback_section.get("title") or SECTION_DISPLAY_TITLES[key])
+                )
+                or fallback_section.get("title")
+                or SECTION_DISPLAY_TITLES[key],
+                "content": _normalize_multiline_text(raw_section.get("content"))
+                or normalize_text(str(fallback_section.get("content") or "")),
+            }
+
+    adaptation = raw.get("teaching_adaptation")
+    fallback_adaptation = fallback_knowledge.get("teaching_adaptation") or {}
+    merged["detailed_sections"] = merged_sections
+    merged["teaching_adaptation"] = {
+        "focus_priority": normalize_text(
+            str((adaptation or {}).get("focus_priority") or fallback_adaptation.get("focus_priority") or "")
+        ),
+        "tone": normalize_text(str((adaptation or {}).get("tone") or fallback_adaptation.get("tone") or "")),
+        "depth_control": normalize_text(
+            str((adaptation or {}).get("depth_control") or fallback_adaptation.get("depth_control") or "")
+        ),
+        "example_strategy": normalize_text(
+            str((adaptation or {}).get("example_strategy") or fallback_adaptation.get("example_strategy") or "")
+        ),
+    }
+    return merged
+
+
+async def _rewrite_analysis_result(
+    *,
+    content: str,
+    language: str,
+    analysis_goal: str,
+    focus_topic: str,
+    learner_context: dict[str, str],
+    analysis_brief: dict[str, Any],
+    source_brief: dict[str, Any],
+    content_blueprint: dict[str, str],
+    ai_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        repaired = await gemini.generate_json(
+            build_analyze_repair_prompt(
+                content=content,
+                language=language,
+                analysis_goal=analysis_goal,
+                focus_topic=focus_topic,
+                learner_context=learner_context,
+                analysis_brief=analysis_brief,
+                source_brief=source_brief,
+                content_blueprint=content_blueprint,
+                weak_draft=ai_result,
+            )
+        )
+    except Exception as exc:
+        print(f"[analyze] Analysis repair failed, keeping salvage path: {exc}")
+        return None
+    return repaired if isinstance(repaired, dict) else None
 
 
 async def _run_analysis(
@@ -1690,18 +2144,20 @@ async def _run_analysis(
     analysis_brief = _build_analysis_brief(analysis_goal, focus_topic, analysis_content)
     analysis_brief["plan"] = analysis_plan
 
-    source_task = asyncio.create_task(
-        search_knowledge_sources(
-            message=analysis_goal,
-            focus_topic=focus_topic,
-            evidence_targets=[
-                str(item)
-                for item in analysis_plan.get("evidence_targets", [])
-                if str(item).strip()
-            ],
+    verified_sources: list[dict[str, str]] = []
+    if _should_lookup_analysis_sources(analysis_plan, analysis_goal, analysis_content):
+        source_task = asyncio.create_task(
+            search_knowledge_sources(
+                message=analysis_goal,
+                focus_topic=focus_topic,
+                evidence_targets=[
+                    str(item)
+                    for item in analysis_plan.get("evidence_targets", [])
+                    if str(item).strip()
+                ],
+            )
         )
-    )
-    verified_sources = await resolve_source_lookup(source_task, flow_label="analyze")
+        verified_sources = await resolve_source_lookup(source_task, flow_label="analyze")
     source_brief = _build_analysis_source_brief(
         analysis_goal,
         focus_topic,
@@ -1731,19 +2187,22 @@ async def _run_analysis(
     )
     fallback_result["knowledge_detail_data"] = fallback_knowledge_detail
 
-    try:
-        raw_blueprint = await gemini.generate_json(
-            build_analyze_blueprint_prompt(
-                content=analysis_content,
-                language=language,
-                analysis_goal=analysis_goal,
-                focus_topic=focus_topic,
-                analysis_brief=analysis_brief,
-                source_brief=source_brief,
+    if _should_generate_analysis_blueprint(analysis_plan, analysis_content):
+        try:
+            raw_blueprint = await gemini.generate_json(
+                build_analyze_blueprint_prompt(
+                    content=analysis_content,
+                    language=language,
+                    analysis_goal=analysis_goal,
+                    focus_topic=focus_topic,
+                    analysis_brief=analysis_brief,
+                    source_brief=source_brief,
+                )
             )
-        )
-    except Exception as exc:
-        print(f"[analyze] Blueprint generation failed, using fallback blueprint: {exc}")
+        except Exception as exc:
+            print(f"[analyze] Blueprint generation failed, using fallback blueprint: {exc}")
+            raw_blueprint = (fallback_result.get("knowledge_detail_data") or {}).get("content_blueprint") or {}
+    else:
         raw_blueprint = (fallback_result.get("knowledge_detail_data") or {}).get("content_blueprint") or {}
 
     fallback_blueprint = (
@@ -1775,14 +2234,41 @@ async def _run_analysis(
             )
         )
     except Exception as exc:
-        print(f"[analyze] Main analysis failed, using fallback: {exc}")
-        ai_result = fallback_result
+        print(f"[analyze] Main analysis failed, switching to salvage path: {exc}")
+        ai_result = {}
 
-    if _analysis_result_needs_rewrite(analysis_goal, focus_topic, ai_result) or _violates_analysis_plan(
-        ai_result,
+    needs_rewrite = _analysis_result_needs_rewrite(
+        analysis_goal,
+        focus_topic,
+        ai_result if isinstance(ai_result, dict) else {},
+    ) or _violates_analysis_plan(
+        ai_result if isinstance(ai_result, dict) else {},
+        analysis_plan,
+    )
+    if needs_rewrite and isinstance(ai_result, dict) and ai_result:
+        repaired_result = await _rewrite_analysis_result(
+            content=analysis_content,
+            language=language,
+            analysis_goal=analysis_goal,
+            focus_topic=focus_topic,
+            learner_context=learner_context,
+            analysis_brief=analysis_brief,
+            source_brief=source_brief,
+            content_blueprint=content_blueprint,
+            ai_result=ai_result,
+        )
+        if repaired_result:
+            ai_result = repaired_result
+
+    if _analysis_result_needs_rewrite(
+        analysis_goal,
+        focus_topic,
+        ai_result if isinstance(ai_result, dict) else {},
+    ) or _violates_analysis_plan(
+        ai_result if isinstance(ai_result, dict) else {},
         analysis_plan,
     ):
-        ai_result = fallback_result
+        ai_result = _merge_analysis_result(ai_result, fallback_result)
 
     title = _prefer_compact_analysis_title(
         normalized_title or normalize_topic_phrase(str(ai_result.get("title") or "")) or fallback_result["title"],
@@ -1812,15 +2298,21 @@ async def _run_analysis(
         title=title,
         question_type=str(analysis_plan.get("analysis_kind") or "review"),
         mode="analyze",
+        main_question=analysis_goal,
+        focus_topic=focus_topic,
+        comparison_targets=analysis_plan.get("comparison_targets") or [],
+        evidence_targets=analysis_plan.get("evidence_targets") or [],
     )
-    brief_summary = build_summary_from_briefs(
-        section_briefs,
-        key="overview",
-        fallback_text=fallback_summary,
+    if str(analysis_plan.get("analysis_kind") or "review") == "structure":
+        section_briefs = _apply_structure_analysis_briefs(section_briefs, content_blueprint)
+    summary = _normalize_analysis_summary(
+        ai_result.get("summary"),
+        ai_result.get("key_points"),
+        fallback_summary,
+        focus_topic=focus_topic,
     )
-    summary = _normalize_analysis_summary(ai_result.get("summary"), ai_result.get("key_points"), brief_summary)
     if _contains_trailing_ellipsis(summary):
-        summary = brief_summary
+        summary = fallback_summary
     knowledge_detail_data = _extract_analysis_knowledge_detail_data(
         ai_result,
         fallback_result,
@@ -1828,14 +2320,20 @@ async def _run_analysis(
         section_briefs=section_briefs,
         title=title,
     )
-    key_points = build_key_points_from_briefs(
-        section_briefs,
-        fallback_points,
+    key_points = _normalize_analysis_key_points(
+        ai_result.get("key_points"),
+        build_key_points_from_briefs(
+            section_briefs,
+            fallback_points,
+        ),
+        analysis_goal=analysis_goal,
+        focus_topic=focus_topic,
     )
     corrections = _normalize_corrections(ai_result.get("corrections"))
     topic_tags = normalize_topic_tags(ai_result.get("topic_tags"), title or focus_topic or content)
     effective_source_label = source_label or "Nội dung nhập tay"
 
+    verdict = _build_analysis_verdict(accuracy_assessment, corrections, verified_sources)
     mindmap_data = build_basic_mindmap(
         title,
         _build_analysis_mindmap_points(
@@ -1873,6 +2371,7 @@ async def _run_analysis(
     return AnalyzeResult(
         session_id=session["id"],
         title=title,
+        verdict=verdict,
         accuracy_score=accuracy_score,
         accuracy_assessment=accuracy_assessment,
         summary=summary,
@@ -1920,3 +2419,237 @@ async def analyze_uploaded_file(
         source_label=filename,
         analysis_goal=analysis_goal,
     )
+
+
+def _repair_analysis_sections(
+    raw_sections: object,
+    *,
+    fallback_sections: dict[str, dict[str, str]],
+    content_blueprint: dict[str, str],
+    title: str,
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    normalized_sections, active_section_keys = normalize_detailed_sections(
+        raw_sections,
+        fallback_sections=fallback_sections,
+        blueprint=content_blueprint,
+        title=title,
+    )
+
+    critical_keys = {"core_concept", "mechanism", "components_and_relationships"}
+    for key in SECTION_ORDER:
+        current_section = normalized_sections.get(key) or {}
+        current_content = _normalize_multiline_text(current_section.get("content"))
+        minimum_length = 70 if key in critical_keys else 48
+        role_is_weak = False
+        if key == "core_concept":
+            role_is_weak = not (
+                _contains_any_marker(current_content, ANALYZE_BOUNDARY_MARKERS)
+                or _contains_any_marker(current_content, ANALYZE_EXPLANATORY_MARKERS)
+            )
+        elif key == "mechanism":
+            role_is_weak = not _contains_any_marker(current_content, ANALYZE_MECHANISM_MARKERS)
+        elif key == "components_and_relationships":
+            role_is_weak = not _contains_any_marker(
+                current_content,
+                STRUCTURE_ANALYSIS_MARKERS + (" thanh phan ", " vai tro ", " quan he "),
+            )
+        if (
+            len(current_content) < minimum_length
+            or (key in critical_keys and _looks_generic_analysis_text(current_content))
+            or (key in critical_keys and len(current_content.split()) < 22 and role_is_weak)
+            or _contains_trailing_ellipsis(current_content)
+        ):
+            normalized_sections[key] = dict(
+                fallback_sections.get(key)
+                or {
+                    "title": SECTION_DISPLAY_TITLES[key],
+                    "content": build_section_content_from_blueprint(
+                        key,
+                        title=title,
+                        blueprint=content_blueprint,
+                    ),
+                }
+            )
+
+    overlap_pairs = (
+        ("core_concept", "mechanism", 0.68),
+        ("mechanism", "components_and_relationships", 0.68),
+        ("components_and_relationships", "common_misconceptions", 0.72),
+    )
+    for left_key, right_key, threshold in overlap_pairs:
+        left_content = _normalize_multiline_text((normalized_sections.get(left_key) or {}).get("content"))
+        right_content = _normalize_multiline_text((normalized_sections.get(right_key) or {}).get("content"))
+        if left_content and right_content and semantic_overlap_ratio(left_content, right_content) > threshold:
+            normalized_sections[right_key] = {
+                "title": SECTION_DISPLAY_TITLES[right_key],
+                "content": build_section_content_from_blueprint(
+                    right_key,
+                    title=title,
+                    blueprint=content_blueprint,
+                ),
+            }
+
+    return normalized_sections, active_section_keys
+
+
+def _extract_analysis_knowledge_detail_data(
+    ai_result: dict[str, Any],
+    fallback_result: dict[str, Any],
+    *,
+    content_blueprint: dict[str, str],
+    section_briefs: dict[str, list[str]],
+    title: str,
+) -> dict[str, Any]:
+    fallback_payload = fallback_result.get("knowledge_detail_data") or {}
+    normalized_sections, active_section_keys = _repair_analysis_sections(
+        ai_result.get("detailed_sections"),
+        fallback_sections=fallback_payload.get("detailed_sections") or {},
+        content_blueprint=content_blueprint,
+        title=title,
+    )
+
+    adaptation = ai_result.get("teaching_adaptation")
+    fallback_adaptation = fallback_payload.get("teaching_adaptation") or {}
+    if not isinstance(adaptation, dict):
+        adaptation = {}
+
+    detail_summary = build_summary_from_briefs(
+        section_briefs,
+        key="detail_focus",
+        fallback_text=fallback_payload.get("summary") or "",
+    )
+    section_bullets = _build_analysis_key_points_from_sections(
+        {
+            "detailed_sections": normalized_sections,
+        }
+    )
+    if section_bullets and not _analysis_key_points_need_fallback(title, title, section_bullets[:4]):
+        detail_summary = "\n".join(f"- {item}" for item in section_bullets[:4])
+
+    return {
+        "title": title,
+        "summary": detail_summary,
+        "content_blueprint": content_blueprint,
+        "section_briefs": section_briefs,
+        "active_section_keys": active_section_keys,
+        "detailed_sections": normalized_sections,
+        "teaching_adaptation": {
+            "focus_priority": normalize_text(
+                str(adaptation.get("focus_priority") or fallback_adaptation.get("focus_priority") or "")
+            ),
+            "tone": normalize_text(str(adaptation.get("tone") or fallback_adaptation.get("tone") or "")),
+            "depth_control": normalize_text(
+                str(adaptation.get("depth_control") or fallback_adaptation.get("depth_control") or "")
+            ),
+            "example_strategy": normalize_text(
+                str(adaptation.get("example_strategy") or fallback_adaptation.get("example_strategy") or "")
+            ),
+        },
+    }
+
+
+def _violates_analysis_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
+    must_include = [
+        normalize_topic_phrase(str(item)) or normalize_text(str(item))
+        for item in plan.get("must_include", [])
+        if str(item).strip()
+    ]
+    if not must_include:
+        return False
+
+    detailed_sections = ai_result.get("detailed_sections") or {}
+    if not isinstance(detailed_sections, dict):
+        knowledge_detail = ai_result.get("knowledge_detail_data") or {}
+        detailed_sections = knowledge_detail.get("detailed_sections") or {}
+
+    combined = normalize_text(
+        " ".join(
+            [
+                str(ai_result.get("title") or ""),
+                str(ai_result.get("summary") or ""),
+                " ".join(str(item) for item in ai_result.get("key_points") or []),
+                str((detailed_sections.get("core_concept") or {}).get("content") or ""),
+                str((detailed_sections.get("mechanism") or {}).get("content") or ""),
+                str((detailed_sections.get("components_and_relationships") or {}).get("content") or ""),
+            ]
+        )
+    )
+    haystack = strip_accents(combined).lower()
+
+    if plan.get("analysis_kind") == "comparison":
+        targets = [strip_accents(item).lower() for item in plan.get("comparison_targets", []) if item]
+        if targets and not all(target in haystack for target in targets):
+            return True
+
+    covered = sum(1 for item in must_include if strip_accents(item).lower() in haystack)
+    return covered < min(2, len(must_include))
+
+
+def _analysis_result_needs_rewrite(analysis_goal: str, focus_topic: str, ai_result: dict[str, Any]) -> bool:
+    title = normalize_text(str(ai_result.get("title") or ""))
+    summary = _normalize_multiline_text(ai_result.get("summary"))
+    raw_key_points = ai_result.get("key_points")
+    key_points = [
+        normalize_text(str(item))
+        for item in (raw_key_points if isinstance(raw_key_points, list) else [])
+        if normalize_text(str(item))
+    ]
+    sections = ai_result.get("detailed_sections")
+    if not title or title.endswith("?"):
+        return True
+    if not isinstance(sections, dict):
+        return True
+
+    analysis_kind = _detect_analysis_kind(analysis_goal)
+    core_content = _normalize_multiline_text((sections.get("core_concept") or {}).get("content"))
+    mechanism_content = _normalize_multiline_text((sections.get("mechanism") or {}).get("content"))
+    relationship_content = _normalize_multiline_text(
+        (sections.get("components_and_relationships") or {}).get("content")
+    )
+
+    if _analysis_summary_needs_fallback(summary, focus_topic):
+        return True
+    if len(core_content) < 60 or _looks_generic_analysis_text(core_content):
+        return True
+    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and not _is_direct_analysis_answer(
+        analysis_goal,
+        focus_topic,
+        core_content,
+    ):
+        return True
+    if mechanism_content and _looks_generic_analysis_text(mechanism_content):
+        return True
+    if mechanism_content and not _contains_any_marker(mechanism_content, ANALYZE_MECHANISM_MARKERS):
+        return True
+    if relationship_content and analysis_kind == "structure" and not _contains_any_marker(
+        relationship_content,
+        STRUCTURE_ANALYSIS_MARKERS + (" thanh phan ", " vai tro ", " quan he "),
+    ):
+        return True
+    if key_points and _analysis_key_points_need_fallback(analysis_goal, focus_topic, key_points):
+        return True
+
+    weak_sections = sum(
+        1
+        for content in (core_content, mechanism_content, relationship_content)
+        if len(content) < 50 or _looks_generic_analysis_text(content) or _contains_trailing_ellipsis(content)
+    )
+    if weak_sections >= 2:
+        return True
+    if core_content and mechanism_content and semantic_overlap_ratio(core_content, mechanism_content) > 0.84:
+        return True
+
+    compare_subjects = _parse_compare_subjects(analysis_goal)
+    if compare_subjects:
+        lowered = strip_accents(" ".join([title, core_content, mechanism_content, relationship_content])).lower()
+        if not all(strip_accents(subject).lower() in lowered for subject in compare_subjects):
+            return True
+
+    if (
+        analysis_kind == "structure"
+        and _focus_overlap_ratio(relationship_content, focus_topic) < 0.28
+    ):
+        return True
+    if _focus_overlap_ratio(" ".join([summary, core_content, mechanism_content, relationship_content]), focus_topic) < 0.24:
+        return True
+    return False

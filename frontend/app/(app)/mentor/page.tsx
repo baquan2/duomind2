@@ -604,7 +604,11 @@ function MessageCard({
         </div>
 
         {!isUser && payload ? (
-          <MentorResponsePanels payload={payload} onFollowup={onFollowup} />
+          <MentorResponsePanels
+            payload={payload}
+            intent={typeof message.intent === "string" ? message.intent : null}
+            onFollowup={onFollowup}
+          />
         ) : null}
       </div>
     </div>

@@ -37,17 +37,20 @@ const GAP_BADGE_LABELS: Record<string, string> = {
 
 export function MentorResponsePanels({
   payload,
+  intent,
   onFollowup,
 }: {
   payload: MentorMessagePayload
+  intent?: string | null
   onFollowup: (question: string) => void
 }) {
   const explorePrompt = buildExplorePrompt(payload)
   const analyzeContent = buildAnalyzeContent(payload)
+  const visibility = resolveIntentVisibility(intent)
 
   return (
     <div className="mt-4 space-y-4 border-t border-border/70 pt-4">
-      {payload.decision_summary ? <DecisionSummarySection payload={payload} /> : null}
+      {payload.decision_summary ? <DecisionSummarySection payload={payload} intent={intent} /> : null}
 
       <div className="flex flex-wrap gap-2">
         {explorePrompt ? (
@@ -76,12 +79,18 @@ export function MentorResponsePanels({
         </Button>
       </div>
 
-      {payload.career_paths?.length ? <CareerPathsSection items={payload.career_paths} /> : null}
-      {payload.skill_gaps?.length ? <SkillGapSection items={payload.skill_gaps} /> : null}
-      {payload.recommended_learning_steps?.length ? (
+      {visibility.careerPaths && payload.career_paths?.length ? (
+        <CareerPathsSection items={payload.career_paths} />
+      ) : null}
+      {visibility.skillGaps && payload.skill_gaps?.length ? (
+        <SkillGapSection items={payload.skill_gaps} />
+      ) : null}
+      {visibility.learningSteps && payload.recommended_learning_steps?.length ? (
         <LearningStepsSection items={payload.recommended_learning_steps} />
       ) : null}
-      {payload.market_signals?.length ? <MarketSignalsSection items={payload.market_signals} /> : null}
+      {visibility.marketSignals && payload.market_signals?.length ? (
+        <MarketSignalsSection items={payload.market_signals} />
+      ) : null}
       {payload.sources?.length ? <SourcesSection sources={payload.sources} /> : null}
       {payload.suggested_followups?.length ? (
         <FollowupSection items={payload.suggested_followups} onFollowup={onFollowup} />
@@ -90,8 +99,14 @@ export function MentorResponsePanels({
   )
 }
 
-function DecisionSummarySection({ payload }: { payload: MentorMessagePayload }) {
-  const fallbackSummary = buildDecisionSummaryFallback(payload)
+function DecisionSummarySection({
+  payload,
+  intent,
+}: {
+  payload: MentorMessagePayload
+  intent?: string | null
+}) {
+  const fallbackSummary = buildDecisionSummaryFallback(payload, intent)
   const summary =
     payload.decision_summary &&
     ![
@@ -382,6 +397,47 @@ function StructuredSection({
   )
 }
 
+function resolveIntentVisibility(intent?: string | null) {
+  switch ((intent || "").trim()) {
+    case "market_outlook":
+      return {
+        careerPaths: false,
+        skillGaps: false,
+        learningSteps: true,
+        marketSignals: true,
+      }
+    case "skill_gap":
+      return {
+        careerPaths: false,
+        skillGaps: true,
+        learningSteps: true,
+        marketSignals: false,
+      }
+    case "learning_roadmap":
+      return {
+        careerPaths: false,
+        skillGaps: false,
+        learningSteps: true,
+        marketSignals: false,
+      }
+    case "career_fit":
+    case "career_roles":
+      return {
+        careerPaths: true,
+        skillGaps: true,
+        learningSteps: true,
+        marketSignals: false,
+      }
+    default:
+      return {
+        careerPaths: true,
+        skillGaps: true,
+        learningSteps: true,
+        marketSignals: true,
+      }
+  }
+}
+
 function buildExplorePrompt(payload: MentorMessagePayload) {
   const topSkill = payload.skill_gaps?.[0]?.skill?.trim()
   if (topSkill) {
@@ -423,7 +479,8 @@ function normalizeGapLevel(level: string) {
   return "medium"
 }
 
-function buildDecisionSummaryFallback(payload: MentorMessagePayload) {
+function buildDecisionSummaryFallback(payload: MentorMessagePayload, intent?: string | null) {
+  void intent
   const topRole = payload.career_paths?.[0]?.role?.trim()
   const topGap = payload.skill_gaps?.[0]?.skill?.trim()
   const topGapAction = payload.skill_gaps?.[0]?.suggested_action?.trim()

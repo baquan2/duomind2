@@ -288,36 +288,148 @@ def normalize_blueprint(
     return normalized
 
 
+def _question_anchor(
+    *,
+    title: str,
+    main_question: str,
+    focus_topic: str,
+    question_type: str,
+    comparison_targets: Iterable[str] | None,
+    mode: str,
+) -> str:
+    compare_targets = [
+        normalize_topic_phrase(str(item))
+        for item in (comparison_targets or [])
+        if normalize_text(str(item))
+    ]
+    compact_question = normalize_text(main_question)
+    compact_focus = normalize_topic_phrase(focus_topic or title) or normalize_text(focus_topic or title) or title
+
+    if question_type == "comparison" and len(compare_targets) >= 2:
+        first, second = compare_targets[:2]
+        return (
+            f"Trọng tâm của câu hỏi này là phân biệt {first} và {second} theo mục tiêu, đầu ra "
+            "và loại bằng chứng mỗi bên dùng để ra quyết định."
+        )
+    if question_type == "definition":
+        return (
+            f"Chủ đề này cần trả lời trực diện {compact_focus} là gì, phạm vi đến đâu, "
+            "và không nên hiểu rộng sang phần nào."
+        )
+    if question_type == "mechanism":
+        return (
+            f"Câu hỏi đang tập trung vào {compact_focus} vận hành ra sao, vì sao tạo ra kết quả "
+            "và điều kiện nào làm nó hoạt động đúng."
+        )
+    if mode == "analyze":
+        return (
+            f"Phần phân tích này dùng để kiểm tra nội dung người học đã viết về {compact_focus} "
+            "và chốt lại phần kiến thức đúng cần giữ."
+        )
+    if compact_question:
+        return f"Chủ đề này đang trả lời trực tiếp câu hỏi: {compact_question}"
+    return f"Trọng tâm của chủ đề là làm rõ {compact_focus} đúng theo yêu cầu người học."
+
+
+def _overview_candidates(
+    *,
+    title: str,
+    main_question: str,
+    focus_topic: str,
+    question_type: str,
+    comparison_targets: Iterable[str] | None,
+    mode: str,
+    blueprint: Mapping[str, str],
+    evidence_targets: Iterable[str] | None,
+) -> list[str]:
+    candidates = [
+        _question_anchor(
+            title=title,
+            main_question=main_question,
+            focus_topic=focus_topic,
+            question_type=question_type,
+            comparison_targets=comparison_targets,
+            mode=mode,
+        ),
+        normalize_text(blueprint.get("scope_boundary", "")),
+        normalize_text(blueprint.get("decision_value", "")),
+        normalize_text(blueprint.get("application", "")),
+    ]
+    if mode == "analyze":
+        evidence_summary = ", ".join(
+            normalize_text(str(item))
+            for item in (evidence_targets or [])
+            if normalize_text(str(item))
+        )
+        if evidence_summary:
+            candidates.append(f"Điểm cần kiểm tra trong nội dung là: {evidence_summary}.")
+    return candidates
+
+
+def _takeaway_candidates(
+    *,
+    question_type: str,
+    comparison_targets: Iterable[str] | None,
+    blueprint: Mapping[str, str],
+) -> list[str]:
+    compare_targets = [
+        normalize_topic_phrase(str(item))
+        for item in (comparison_targets or [])
+        if normalize_text(str(item))
+    ]
+    if question_type == "comparison" and len(compare_targets) >= 2:
+        first, second = compare_targets[:2]
+        return [
+            normalize_text(blueprint.get("core_definition", "")),
+            f"So {first} với {second} trên ba trục: mục tiêu công việc, đầu ra chính và nguồn thông tin thường dùng.",
+            normalize_text(blueprint.get("components", "")),
+            normalize_text(blueprint.get("conditions_and_limits", "")),
+            normalize_text(blueprint.get("misconceptions", "")),
+        ]
+
+    return [
+        normalize_text(blueprint.get("core_definition", "")),
+        normalize_text(blueprint.get("mechanism", "")),
+        normalize_text(blueprint.get("components", "")),
+        normalize_text(blueprint.get("conditions_and_limits", "")),
+        normalize_text(blueprint.get("misconceptions", "")),
+    ]
+
+
 def build_section_briefs(
     blueprint: Mapping[str, str],
     *,
     title: str,
     question_type: str,
     mode: str,
+    main_question: str = "",
+    focus_topic: str = "",
+    comparison_targets: Iterable[str] | None = None,
+    evidence_targets: Iterable[str] | None = None,
 ) -> dict[str, list[str]]:
-    _ = mode
     overview = dedupe_ideas(
-        [
-            normalize_text(blueprint.get("core_definition", "")),
-            normalize_text(blueprint.get("scope_boundary", "")),
-            normalize_text(blueprint.get("decision_value", "")),
-            normalize_text(blueprint.get("application", "")),
-        ],
+        _overview_candidates(
+            title=title,
+            main_question=main_question,
+            focus_topic=focus_topic,
+            question_type=question_type,
+            comparison_targets=comparison_targets,
+            mode=mode,
+            blueprint=blueprint,
+            evidence_targets=evidence_targets,
+        ),
         limit=4,
-        max_overlap=0.40,
+        max_overlap=0.36,
     )
 
     core_takeaways = dedupe_ideas(
-        [
-            normalize_text(blueprint.get("core_definition", "")),
-            normalize_text(blueprint.get("mechanism", "")),
-            normalize_text(blueprint.get("components", "")),
-            normalize_text(blueprint.get("application", "")),
-            normalize_text(blueprint.get("misconceptions", "")),
-            normalize_text(blueprint.get("conditions_and_limits", "")),
-        ],
+        _takeaway_candidates(
+            question_type=question_type,
+            comparison_targets=comparison_targets,
+            blueprint=blueprint,
+        ),
         limit=5,
-        max_overlap=0.38,
+        max_overlap=0.34,
     )
 
     detail_focus = dedupe_ideas(
@@ -328,7 +440,7 @@ def build_section_briefs(
             f"Dùng khi / giới hạn: {normalize_text(blueprint.get('conditions_and_limits', ''))}",
         ],
         limit=4,
-        max_overlap=0.42,
+        max_overlap=0.30,
     )
 
     exploration_seed = [
@@ -403,9 +515,8 @@ def build_section_content_from_blueprint(
             [
                 blueprint.get("core_definition", ""),
                 blueprint.get("scope_boundary", ""),
-                blueprint.get("decision_value", ""),
             ],
-            max_words=120,
+            max_words=110,
         )
     if section_key == "mechanism":
         return _compose_section(
@@ -420,25 +531,23 @@ def build_section_content_from_blueprint(
         return _compose_section(
             [
                 blueprint.get("components", ""),
-                blueprint.get("mechanism", ""),
-                blueprint.get("conditions_and_limits", ""),
+                blueprint.get("scope_boundary", ""),
+                blueprint.get("related_concepts", ""),
             ],
-            max_words=120,
+            max_words=110,
         )
     if section_key == "persona_based_example":
         return _compose_section(
             [
                 blueprint.get("example", ""),
-                blueprint.get("application", ""),
             ],
-            max_words=90,
+            max_words=95,
         )
     if section_key == "real_world_applications":
         return _compose_section(
             [
                 blueprint.get("application", ""),
                 blueprint.get("decision_value", ""),
-                blueprint.get("conditions_and_limits", ""),
             ],
             max_words=95,
         )
@@ -455,7 +564,6 @@ def build_section_content_from_blueprint(
         [
             f"Điểm cần nắm tiếp sau {title} là: {blueprint.get('conditions_and_limits', '')}",
             blueprint.get("related_concepts", ""),
-            blueprint.get("decision_value", ""),
         ],
         max_words=80,
     )

@@ -25,6 +25,8 @@ from app.utils.content_blueprint import (
 from app.utils.core_ai_prompts import (
     build_explore_blueprint_prompt,
     build_explore_core_prompt,
+    build_explore_query_plan_prompt,
+    build_explore_repair_prompt,
 )
 from app.utils.fallbacks import build_explore_mindmap
 from app.utils.helpers import (
@@ -76,6 +78,19 @@ GENERIC_EXPLORE_PHRASES = (
     "hãy nắm",
     "phần này",
     "khối kiến thức",
+)
+
+
+STRUCTURE_EXPLORE_MARKERS = (
+    "gom gi",
+    "gom nhung gi",
+    "bao gom gi",
+    "bao gom nhung gi",
+    "nhung phan nao",
+    "phan nao",
+    "thanh phan nao",
+    "thanh phan chinh",
+    "cau truc",
 )
 
 
@@ -138,6 +153,133 @@ def _normalize_key_points(raw_points: object) -> list[str]:
     return points[:5]
 
 
+def _contains_trailing_ellipsis(text: str) -> bool:
+    normalized = normalize_text(text)
+    return normalized.endswith("...") or normalized.endswith("…")
+
+
+def _summary_lines(text: object) -> list[str]:
+    if not isinstance(text, str):
+        return []
+    bullets: list[str] = []
+    for line in text.splitlines():
+        cleaned = normalize_text(line.lstrip("-*• ").strip())
+        if not cleaned or _contains_trailing_ellipsis(cleaned):
+            continue
+        if cleaned not in bullets:
+            bullets.append(cleaned)
+    return bullets
+
+
+def _section_point_candidates(sections: object) -> list[str]:
+    if not isinstance(sections, dict):
+        return []
+    candidates: list[str] = []
+    for key in (
+        "core_concept",
+        "mechanism",
+        "components_and_relationships",
+        "real_world_applications",
+        "common_misconceptions",
+    ):
+        sentence = _lead_sentence((sections.get(key) or {}).get("content"))
+        if not sentence or _contains_trailing_ellipsis(sentence) or _looks_generic_text(sentence):
+            continue
+        if sentence not in candidates:
+            candidates.append(sentence)
+    return candidates[:5]
+
+
+def _normalize_explore_summary(
+    summary: object,
+    key_points: object,
+    fallback_summary: str,
+    *,
+    prompt: str,
+    focus_topic: str,
+    detailed_sections: object,
+) -> str:
+    bullets = _summary_lines(summary)
+    if bullets and not _is_direct_explore_answer(prompt, focus_topic, bullets[0]):
+        core_sentence = _lead_sentence(((detailed_sections or {}).get("core_concept") or {}).get("content"))
+        if core_sentence and _is_direct_explore_answer(prompt, focus_topic, core_sentence):
+            bullets = [core_sentence, *[item for item in bullets if item != core_sentence]]
+
+    for item in _normalize_key_points(key_points):
+        if item not in bullets and not _looks_generic_text(item) and not _contains_trailing_ellipsis(item):
+            bullets.append(item)
+        if len(bullets) >= 4:
+            break
+
+    for item in _section_point_candidates(detailed_sections):
+        if item not in bullets:
+            bullets.append(item)
+        if len(bullets) >= 4:
+            break
+
+    if len(bullets) < 3:
+        for item in _summary_lines(fallback_summary):
+            if item not in bullets:
+                bullets.append(item)
+            if len(bullets) >= 4:
+                break
+
+    if not bullets:
+        return fallback_summary
+    return "\n".join(f"- {item}" for item in bullets[:4])
+
+
+def _normalize_explore_output_key_points(
+    raw_points: object,
+    fallback_points: list[str],
+    *,
+    prompt: str,
+    focus_topic: str,
+    detailed_sections: object,
+) -> list[str]:
+    direct_points = _normalize_key_points(raw_points)
+    if direct_points and not _key_points_need_fallback(prompt, focus_topic, direct_points):
+        return direct_points[:5]
+
+    section_points = _section_point_candidates(detailed_sections)
+    if len(section_points) >= 4:
+        return section_points[:5]
+
+    merged = list(direct_points)
+    for item in section_points + fallback_points:
+        cleaned = normalize_text(item)
+        if not cleaned or cleaned in merged or _contains_trailing_ellipsis(cleaned):
+            continue
+        merged.append(cleaned)
+        if len(merged) >= 5:
+            break
+
+    return merged[:5] if merged else fallback_points[:5]
+
+
+def _build_detail_summary_from_sections(sections: object, fallback_text: str) -> str:
+    if isinstance(sections, dict):
+        bullets: list[str] = []
+        labeled_keys = (
+            ("mechanism", "Co che"),
+            ("components_and_relationships", "Cau truc"),
+            ("real_world_applications", "Ung dung"),
+            ("common_misconceptions", "De nham o"),
+        )
+        for key, label in labeled_keys:
+            sentence = _lead_sentence((sections.get(key) or {}).get("content"))
+            if not sentence or _looks_generic_text(sentence) or _contains_trailing_ellipsis(sentence):
+                continue
+            candidate = f"{label}: {sentence}"
+            if candidate not in bullets:
+                bullets.append(candidate)
+            if len(bullets) >= 4:
+                break
+        if bullets:
+            return "\n".join(f"- {item}" for item in bullets[:4])
+    return fallback_text
+
+
 def _normalize_topic_tag_list(raw_tags: object, source_text: str) -> list[str]:
     tags = normalize_topic_tags(raw_tags, source_text)
     normalized: list[str] = []
@@ -180,10 +322,17 @@ def _parse_compare_subjects(prompt: str) -> tuple[str, str] | None:
     return None
 
 
+def _is_structure_explore_request(prompt: str) -> bool:
+    lowered = strip_accents(normalize_text(prompt)).lower()
+    return any(marker in lowered for marker in STRUCTURE_EXPLORE_MARKERS)
+
+
 def _detect_explore_kind(prompt: str) -> str:
     lowered = strip_accents(normalize_text(prompt)).lower()
     if _parse_compare_subjects(prompt):
         return "comparison"
+    if _is_structure_explore_request(prompt):
+        return "structure"
     if "la gi" in lowered:
         return "definition"
     if "hoat dong nhu the nao" in lowered or "van hanh nhu the nao" in lowered:
@@ -209,6 +358,11 @@ def _is_direct_explore_answer(prompt: str, focus_topic: str, text: str) -> bool:
             marker in f" {lead} "
             for marker in (" la ", " la mot ", " duoc dung de ", " chi ")
         )
+    if question_type == "structure":
+        return _focus_overlap_ratio(lead, focus_topic) >= 0.34 and any(
+            marker in f" {lead} "
+            for marker in (" gom ", " bao gom ", " thanh phan ", " cau truc ")
+        )
     if question_type == "mechanism":
         return _focus_overlap_ratio(lead, focus_topic) >= 0.34 and any(
             marker in f" {lead} "
@@ -218,13 +372,15 @@ def _is_direct_explore_answer(prompt: str, focus_topic: str, text: str) -> bool:
 
 
 def _key_points_need_fallback(prompt: str, focus_topic: str, key_points: list[str]) -> bool:
-    if len(key_points) < 5:
+    if len(key_points) < 4:
         return True
 
+    question_type = _detect_explore_kind(prompt)
     compare_subjects = _parse_compare_subjects(prompt)
     useful_points = 0
     generic_points = 0
     compare_points = 0
+    structure_points = 0
 
     for point in key_points:
         normalized = normalize_text(point)
@@ -237,6 +393,10 @@ def _key_points_need_fallback(prompt: str, focus_topic: str, key_points: list[st
         lowered = strip_accents(normalized).lower()
         if compare_subjects and all(strip_accents(subject).lower() in lowered for subject in compare_subjects):
             compare_points += 1
+        if question_type == "structure" and any(
+            marker in f" {lowered} " for marker in (" gom ", " bao gom ", " thanh phan ", " cau truc ")
+        ):
+            structure_points += 1
 
         if _focus_overlap_ratio(normalized, focus_topic) >= 0.22:
             useful_points += 1
@@ -250,6 +410,8 @@ def _key_points_need_fallback(prompt: str, focus_topic: str, key_points: list[st
     if useful_points < 3:
         return True
     if compare_subjects and compare_points == 0:
+        return True
+    if question_type == "structure" and structure_points == 0:
         return True
     return False
 
@@ -424,7 +586,7 @@ def _build_comparison_sections(prompt: str, learner_context: dict[str, str]) -> 
     }
 
 
-def _build_fallback_payload(prompt: str, learner_context: dict[str, str]) -> dict[str, Any]:
+def _legacy_build_fallback_payload(prompt: str, learner_context: dict[str, str]) -> dict[str, Any]:
     title = _build_compact_explore_title(prompt, prompt)
     question_type = _detect_explore_kind(prompt)
 
@@ -475,7 +637,7 @@ def _build_fallback_payload(prompt: str, learner_context: dict[str, str]) -> dic
     }
 
 
-def _build_explore_plan(prompt: str, focus_topic: str) -> dict[str, Any]:
+def _heuristic_explore_plan(prompt: str, focus_topic: str) -> dict[str, Any]:
     compare_subjects = _parse_compare_subjects(prompt)
     must_include = [normalize_topic_phrase(focus_topic or prompt)]
     if compare_subjects:
@@ -490,6 +652,91 @@ def _build_explore_plan(prompt: str, focus_topic: str) -> dict[str, Any]:
         "must_avoid": ["lan sang chủ đề liên quan", "giảng rộng cả lĩnh vực"],
         "answer_strategy": "Trả lời trực diện câu hỏi trước, rồi mới giải thích lý thuyết, cơ chế và ví dụ.",
     }
+
+def _normalize_explore_plan(
+    raw_plan: object,
+    prompt: str,
+    focus_topic: str,
+) -> dict[str, Any]:
+    fallback = _heuristic_explore_plan(prompt, focus_topic)
+    if not isinstance(raw_plan, dict):
+        return fallback
+
+    question_type = normalize_text(str(raw_plan.get("question_type") or fallback["question_type"])).lower()
+    if question_type not in {"definition", "comparison", "mechanism", "structure", "general"}:
+        question_type = fallback["question_type"]
+
+    main_question = normalize_text(str(raw_plan.get("main_question") or fallback["main_question"]))
+    plan_focus_topic = normalize_topic_phrase(str(raw_plan.get("focus_topic") or fallback["focus_topic"]))
+
+    comparison_targets_raw = raw_plan.get("comparison_targets")
+    comparison_targets: list[str] = []
+    if isinstance(comparison_targets_raw, list):
+        for item in comparison_targets_raw[:2]:
+            cleaned = normalize_topic_phrase(str(item))
+            if cleaned:
+                comparison_targets.append(cleaned)
+    if question_type == "comparison" and len(comparison_targets) < 2:
+        comparison_targets = list(fallback["comparison_targets"])
+
+    must_include_raw = raw_plan.get("must_include")
+    must_include: list[str] = []
+    if isinstance(must_include_raw, list):
+        for item in must_include_raw[:5]:
+            cleaned = normalize_topic_phrase(str(item)) or normalize_text(str(item))
+            if cleaned and cleaned not in must_include:
+                must_include.append(cleaned)
+    for item in comparison_targets + [plan_focus_topic]:
+        if item and item not in must_include:
+            must_include.append(item)
+    if not must_include:
+        must_include = list(fallback["must_include"])
+
+    must_avoid_raw = raw_plan.get("must_avoid")
+    must_avoid: list[str] = []
+    if isinstance(must_avoid_raw, list):
+        for item in must_avoid_raw[:4]:
+            cleaned = normalize_text(str(item))
+            if cleaned:
+                must_avoid.append(cleaned)
+    if not must_avoid:
+        must_avoid = list(fallback["must_avoid"])
+
+    answer_strategy = normalize_text(str(raw_plan.get("answer_strategy") or fallback["answer_strategy"]))
+
+    return {
+        "question_type": question_type,
+        "main_question": main_question or fallback["main_question"],
+        "focus_topic": plan_focus_topic or fallback["focus_topic"],
+        "comparison_targets": comparison_targets,
+        "must_include": must_include[:5],
+        "must_avoid": must_avoid[:4],
+        "answer_strategy": answer_strategy or fallback["answer_strategy"],
+    }
+
+
+def _should_use_llm_explore_plan(prompt: str) -> bool:
+    question_type = _detect_explore_kind(prompt)
+    prompt_length = len(normalize_text(prompt).split())
+    if question_type in {"definition", "comparison", "mechanism", "structure"} and prompt_length <= 18:
+        return False
+    return True
+
+
+async def _build_explore_plan(prompt: str, focus_topic: str) -> dict[str, Any]:
+    fallback = _heuristic_explore_plan(prompt, focus_topic)
+    if not _should_use_llm_explore_plan(prompt):
+        return fallback
+    try:
+        raw_plan = await gemini.generate_json(
+            build_explore_query_plan_prompt(
+                prompt=prompt,
+            )
+        )
+    except Exception as exc:
+        print(f"[explore] Query plan generation failed, using heuristic plan: {exc}")
+        return fallback
+    return _normalize_explore_plan(raw_plan, prompt, focus_topic)
 
 
 def _build_explore_brief(prompt: str, focus_topic: str, plan: dict[str, Any]) -> dict[str, Any]:
@@ -509,6 +756,22 @@ def _build_explore_brief(prompt: str, focus_topic: str, plan: dict[str, Any]) ->
             "references_rendered_separately",
         ],
     }
+
+
+def _should_generate_explore_blueprint(plan: dict[str, Any], prompt: str) -> bool:
+    question_type = normalize_text(str(plan.get("question_type") or "")).lower()
+    prompt_length = len(normalize_text(prompt).split())
+    if question_type in {"definition", "comparison", "mechanism", "structure"} and prompt_length <= 18:
+        return False
+    return True
+
+
+def _should_lookup_explore_sources(plan: dict[str, Any], prompt: str) -> bool:
+    question_type = normalize_text(str(plan.get("question_type") or "")).lower()
+    prompt_length = len(normalize_text(prompt).split())
+    if question_type in {"definition", "comparison", "mechanism", "structure"} and prompt_length <= 18:
+        return False
+    return True
 
 
 def _build_explore_source_brief(
@@ -544,7 +807,100 @@ def _build_compact_result_title(raw_title: object, fallback_title: str) -> str:
     return title or build_core_title(fallback_title, "Khám phá chủ đề")
 
 
-def _extract_knowledge_detail_data(
+def _merge_explore_result(
+    ai_result: object,
+    fallback_payload: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(fallback_payload)
+    raw = ai_result if isinstance(ai_result, dict) else {}
+
+    title = normalize_text(str(raw.get("title") or ""))
+    if title and not title.endswith("?"):
+        merged["title"] = title
+
+    summary = normalize_multiline_text(raw.get("summary"))
+    if summary:
+        merged["summary"] = summary
+
+    key_points = _normalize_key_points(raw.get("key_points"))
+    if key_points:
+        merged["key_points"] = key_points
+
+    topic_tags = _normalize_topic_tag_list(raw.get("topic_tags"), merged.get("title") or fallback_payload["title"])
+    if topic_tags:
+        merged["topic_tags"] = topic_tags
+
+    fallback_sections = fallback_payload.get("detailed_sections") or {}
+    raw_sections = raw.get("detailed_sections")
+    merged_sections = {key: dict(value) for key, value in fallback_sections.items()}
+    if isinstance(raw_sections, dict):
+        for key in SECTION_ORDER:
+            raw_section = raw_sections.get(key)
+            if not isinstance(raw_section, dict):
+                continue
+            fallback_section = merged_sections.get(key) or {
+                "title": SECTION_DISPLAY_TITLES[key],
+                "content": "",
+            }
+            merged_sections[key] = {
+                "title": normalize_text(
+                    str(raw_section.get("title") or fallback_section.get("title") or SECTION_DISPLAY_TITLES[key])
+                )
+                or fallback_section.get("title")
+                or SECTION_DISPLAY_TITLES[key],
+                "content": normalize_multiline_text(raw_section.get("content"))
+                or normalize_text(str(fallback_section.get("content") or "")),
+            }
+    merged["detailed_sections"] = merged_sections
+
+    adaptation = raw.get("teaching_adaptation")
+    fallback_adaptation = fallback_payload.get("teaching_adaptation") or {}
+    if isinstance(adaptation, dict):
+        merged["teaching_adaptation"] = {
+            "focus_priority": normalize_text(
+                str(adaptation.get("focus_priority") or fallback_adaptation.get("focus_priority") or "")
+            ),
+            "tone": normalize_text(str(adaptation.get("tone") or fallback_adaptation.get("tone") or "")),
+            "depth_control": normalize_text(
+                str(adaptation.get("depth_control") or fallback_adaptation.get("depth_control") or "")
+            ),
+            "example_strategy": normalize_text(
+                str(adaptation.get("example_strategy") or fallback_adaptation.get("example_strategy") or "")
+            ),
+        }
+
+    return merged
+
+
+async def _rewrite_explore_result(
+    *,
+    prompt: str,
+    focus_topic: str,
+    learner_context: dict[str, str],
+    explore_brief: dict[str, Any],
+    source_brief: dict[str, Any],
+    content_blueprint: dict[str, str],
+    ai_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        repaired = await gemini.generate_json(
+            build_explore_repair_prompt(
+                prompt=prompt,
+                focus_topic=focus_topic,
+                learner_context=learner_context,
+                explore_brief=explore_brief,
+                source_brief=source_brief,
+                content_blueprint=content_blueprint,
+                weak_draft=ai_result,
+            )
+        )
+    except Exception as exc:
+        print(f"[explore] Explore repair failed, keeping salvage path: {exc}")
+        return None
+    return repaired if isinstance(repaired, dict) else None
+
+
+def _legacy_v2_extract_knowledge_detail_data(
     ai_result: dict[str, Any],
     fallback_payload: dict[str, Any],
 ) -> dict[str, Any]:
@@ -593,7 +949,7 @@ def _extract_knowledge_detail_data(
     }
 
 
-def _raw_explore_result_needs_rewrite(
+def _legacy_v2_raw_explore_result_needs_rewrite(
     focus_topic: str,
     prompt: str,
     ai_result: dict[str, Any],
@@ -657,7 +1013,7 @@ def _raw_explore_result_needs_rewrite(
     return False
 
 
-def _violates_explore_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
+def _legacy_violates_explore_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
     must_include = [
         normalize_topic_phrase(str(item))
         for item in plan.get("must_include", [])
@@ -705,7 +1061,29 @@ def _build_fallback_payload(prompt: str, learner_context: dict[str, str]) -> dic
         title=title,
         question_type=question_type,
         mode="explore",
+        main_question=prompt,
+        focus_topic=title,
+        comparison_targets=compare_subjects,
     )
+    if question_type == "structure":
+        structure_summary = [
+            normalize_text(content_blueprint.get("components", "")),
+            normalize_text(content_blueprint.get("core_definition", "")),
+            normalize_text(content_blueprint.get("mechanism", "")),
+            normalize_text(content_blueprint.get("conditions_and_limits", "")),
+        ]
+        section_briefs["overview"] = [item for item in structure_summary if item][:4]
+        section_briefs["core_takeaways"] = [
+            item
+            for item in [
+                normalize_text(content_blueprint.get("components", "")),
+                normalize_text(content_blueprint.get("core_definition", "")),
+                normalize_text(content_blueprint.get("mechanism", "")),
+                normalize_text(content_blueprint.get("misconceptions", "")),
+                normalize_text(content_blueprint.get("conditions_and_limits", "")),
+            ]
+            if item
+        ][:5]
     return {
         "title": title,
         "summary": build_summary_from_briefs(section_briefs, key="overview"),
@@ -724,7 +1102,7 @@ def _build_fallback_payload(prompt: str, learner_context: dict[str, str]) -> dic
     }
 
 
-def _extract_knowledge_detail_data(
+def _legacy_extract_knowledge_detail_data(
     ai_result: dict[str, Any],
     fallback_payload: dict[str, Any],
     *,
@@ -746,14 +1124,23 @@ def _extract_knowledge_detail_data(
 
     return {
         "title": title,
-        "summary": build_summary_from_briefs(
-            section_briefs,
-            key="detail_focus",
-            fallback_text=fallback_payload.get("summary") or "",
+        "summary": _build_detail_summary_from_sections(
+            normalized_sections,
+            build_summary_from_briefs(
+                section_briefs,
+                key="detail_focus",
+                fallback_text=fallback_payload.get("summary") or "",
+            ),
         ),
-        "key_points": build_key_points_from_briefs(
-            section_briefs,
-            fallback_payload.get("key_points") or [],
+        "key_points": _normalize_explore_output_key_points(
+            ai_result.get("key_points"),
+            build_key_points_from_briefs(
+                section_briefs,
+                fallback_payload.get("key_points") or [],
+            ),
+            prompt=title,
+            focus_topic=title,
+            detailed_sections=normalized_sections,
         ),
         "topic_tags": fallback_payload.get("topic_tags") or [],
         "content_blueprint": content_blueprint,
@@ -775,7 +1162,7 @@ def _extract_knowledge_detail_data(
     }
 
 
-def _raw_explore_result_needs_rewrite(
+def _legacy_raw_explore_result_needs_rewrite(
     focus_topic: str,
     prompt: str,
     ai_result: dict[str, Any],
@@ -841,7 +1228,7 @@ async def explore_topic(
     learner_context = build_prompt_learning_context(get_user_context(onboarding))
     validated_prompt = _validate_explore_input(request.prompt)
     initial_focus_topic = normalize_topic_phrase(validated_prompt) or normalize_text(validated_prompt)
-    explore_plan = _build_explore_plan(validated_prompt, initial_focus_topic)
+    explore_plan = await _build_explore_plan(validated_prompt, initial_focus_topic)
     focus_topic = (
         normalize_topic_phrase(str(explore_plan.get("focus_topic") or initial_focus_topic))
         or initial_focus_topic
@@ -861,7 +1248,32 @@ async def explore_topic(
         title=fallback_payload["title"],
         question_type=str(explore_plan.get("question_type") or "general"),
         mode="explore",
+        main_question=validated_prompt,
+        focus_topic=focus_topic,
+        comparison_targets=explore_plan.get("comparison_targets") or [],
     )
+    if str(explore_plan.get("question_type") or "general") == "structure":
+        fallback_payload["section_briefs"]["overview"] = [
+            item
+            for item in [
+                normalize_text(fallback_payload["content_blueprint"].get("components", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("core_definition", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("mechanism", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("conditions_and_limits", "")),
+            ]
+            if item
+        ][:4]
+        fallback_payload["section_briefs"]["core_takeaways"] = [
+            item
+            for item in [
+                normalize_text(fallback_payload["content_blueprint"].get("components", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("core_definition", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("mechanism", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("misconceptions", "")),
+                normalize_text(fallback_payload["content_blueprint"].get("conditions_and_limits", "")),
+            ]
+            if item
+        ][:5]
     fallback_payload["summary"] = build_summary_from_briefs(
         fallback_payload["section_briefs"],
         key="overview",
@@ -875,33 +1287,38 @@ async def explore_topic(
     )
 
     explore_brief = _build_explore_brief(validated_prompt, focus_topic, explore_plan)
-    source_task = asyncio.create_task(
-        search_knowledge_sources(
-            message=validated_prompt,
-            focus_topic=focus_topic,
-            evidence_targets=[
-                str(item) for item in explore_plan.get("must_include", []) if str(item).strip()
-            ],
+    verified_sources: list[dict[str, str]] = []
+    if _should_lookup_explore_sources(explore_plan, validated_prompt):
+        source_task = asyncio.create_task(
+            search_knowledge_sources(
+                message=validated_prompt,
+                focus_topic=focus_topic,
+                evidence_targets=[
+                    str(item) for item in explore_plan.get("must_include", []) if str(item).strip()
+                ],
+            )
         )
-    )
-    verified_sources = await resolve_source_lookup(source_task, flow_label="explore")
+        verified_sources = await resolve_source_lookup(source_task, flow_label="explore")
     source_brief = _build_explore_source_brief(
         validated_prompt,
         focus_topic,
         explore_plan,
         verified_sources,
     )
-    try:
-        raw_blueprint = await gemini.generate_json(
-            build_explore_blueprint_prompt(
-                prompt=validated_prompt,
-                focus_topic=focus_topic,
-                explore_brief=explore_brief,
-                source_brief=source_brief,
+    if _should_generate_explore_blueprint(explore_plan, validated_prompt):
+        try:
+            raw_blueprint = await gemini.generate_json(
+                build_explore_blueprint_prompt(
+                    prompt=validated_prompt,
+                    focus_topic=focus_topic,
+                    explore_brief=explore_brief,
+                    source_brief=source_brief,
+                )
             )
-        )
-    except Exception as exc:
-        print(f"[explore] Blueprint generation failed, using fallback blueprint: {exc}")
+        except Exception as exc:
+            print(f"[explore] Blueprint generation failed, using fallback blueprint: {exc}")
+            raw_blueprint = fallback_payload.get("content_blueprint") or {}
+    else:
         raw_blueprint = fallback_payload.get("content_blueprint") or {}
 
     content_blueprint = normalize_blueprint(
@@ -921,14 +1338,39 @@ async def explore_topic(
             )
         )
     except Exception as exc:
-        print(f"[explore] Topic exploration failed, using fallback: {exc}")
-        ai_result = fallback_payload
+        print(f"[explore] Topic exploration failed, switching to salvage path: {exc}")
+        ai_result = {}
 
-    if _raw_explore_result_needs_rewrite(focus_topic, validated_prompt, ai_result) or _violates_explore_plan(
-        ai_result,
+    needs_rewrite = _raw_explore_result_needs_rewrite(
+        focus_topic,
+        validated_prompt,
+        ai_result if isinstance(ai_result, dict) else {},
+    ) or _violates_explore_plan(
+        ai_result if isinstance(ai_result, dict) else {},
+        explore_plan,
+    )
+    if needs_rewrite and isinstance(ai_result, dict) and ai_result:
+        repaired_result = await _rewrite_explore_result(
+            prompt=validated_prompt,
+            focus_topic=focus_topic,
+            learner_context=learner_context,
+            explore_brief=explore_brief,
+            source_brief=source_brief,
+            content_blueprint=content_blueprint,
+            ai_result=ai_result,
+        )
+        if repaired_result:
+            ai_result = repaired_result
+
+    if _raw_explore_result_needs_rewrite(
+        focus_topic,
+        validated_prompt,
+        ai_result if isinstance(ai_result, dict) else {},
+    ) or _violates_explore_plan(
+        ai_result if isinstance(ai_result, dict) else {},
         explore_plan,
     ):
-        ai_result = fallback_payload
+        ai_result = _merge_explore_result(ai_result, fallback_payload)
 
     title = _build_compact_result_title(ai_result.get("title"), fallback_payload["title"])
     section_briefs = build_section_briefs(
@@ -936,15 +1378,54 @@ async def explore_topic(
         title=title,
         question_type=str(explore_plan.get("question_type") or "general"),
         mode="explore",
+        main_question=validated_prompt,
+        focus_topic=focus_topic,
+        comparison_targets=explore_plan.get("comparison_targets") or [],
     )
+    if str(explore_plan.get("question_type") or "general") == "structure":
+        section_briefs["overview"] = [
+            item
+            for item in [
+                normalize_text(content_blueprint.get("components", "")),
+                normalize_text(content_blueprint.get("core_definition", "")),
+                normalize_text(content_blueprint.get("mechanism", "")),
+                normalize_text(content_blueprint.get("conditions_and_limits", "")),
+            ]
+            if item
+        ][:4]
+        section_briefs["core_takeaways"] = [
+            item
+            for item in [
+                normalize_text(content_blueprint.get("components", "")),
+                normalize_text(content_blueprint.get("core_definition", "")),
+                normalize_text(content_blueprint.get("mechanism", "")),
+                normalize_text(content_blueprint.get("misconceptions", "")),
+                normalize_text(content_blueprint.get("conditions_and_limits", "")),
+            ]
+            if item
+        ][:5]
     summary = build_summary_from_briefs(
         section_briefs,
         key="overview",
         fallback_text=fallback_payload["summary"],
     )
-    key_points = build_key_points_from_briefs(
-        section_briefs,
-        fallback_payload["key_points"],
+    summary = _normalize_explore_summary(
+        ai_result.get("summary"),
+        ai_result.get("key_points"),
+        summary,
+        prompt=validated_prompt,
+        focus_topic=focus_topic,
+        detailed_sections=ai_result.get("detailed_sections"),
+    )
+    key_points = _normalize_explore_output_key_points(
+        ai_result.get("key_points"),
+        build_key_points_from_briefs(
+            section_briefs,
+            fallback_payload["key_points"],
+        ),
+        prompt=validated_prompt,
+        focus_topic=focus_topic,
+        detailed_sections=ai_result.get("detailed_sections"),
     )
     knowledge_detail_data = _extract_knowledge_detail_data(
         ai_result,
@@ -993,3 +1474,212 @@ async def explore_topic(
         mindmap_data=mindmap_data,
         sources=verified_sources,
     )
+
+
+def _repair_explore_sections(
+    raw_sections: object,
+    *,
+    fallback_sections: dict[str, dict[str, str]],
+    content_blueprint: dict[str, str],
+    title: str,
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    normalized_sections, active_section_keys = normalize_detailed_sections(
+        raw_sections,
+        fallback_sections=fallback_sections,
+        blueprint=content_blueprint,
+        title=title,
+    )
+
+    critical_keys = {"core_concept", "mechanism", "components_and_relationships"}
+    for key in SECTION_ORDER:
+        current_section = normalized_sections.get(key) or {}
+        current_content = normalize_multiline_text(current_section.get("content"))
+        minimum_length = 70 if key in critical_keys else 48
+        if (
+            len(current_content) < minimum_length
+            or (key in critical_keys and _looks_generic_text(current_content))
+            or _contains_trailing_ellipsis(current_content)
+        ):
+            normalized_sections[key] = dict(
+                fallback_sections.get(key)
+                or {
+                    "title": SECTION_DISPLAY_TITLES[key],
+                    "content": build_section_content_from_blueprint(
+                        key,
+                        title=title,
+                        blueprint=content_blueprint,
+                    ),
+                }
+            )
+
+    overlap_pairs = (
+        ("core_concept", "mechanism", 0.68),
+        ("mechanism", "components_and_relationships", 0.68),
+        ("components_and_relationships", "common_misconceptions", 0.72),
+    )
+    for left_key, right_key, threshold in overlap_pairs:
+        left_content = normalize_multiline_text((normalized_sections.get(left_key) or {}).get("content"))
+        right_content = normalize_multiline_text((normalized_sections.get(right_key) or {}).get("content"))
+        if left_content and right_content and semantic_overlap_ratio(left_content, right_content) > threshold:
+            normalized_sections[right_key] = {
+                "title": SECTION_DISPLAY_TITLES[right_key],
+                "content": build_section_content_from_blueprint(
+                    right_key,
+                    title=title,
+                    blueprint=content_blueprint,
+                ),
+            }
+
+    return normalized_sections, active_section_keys
+
+
+def _extract_knowledge_detail_data(
+    ai_result: dict[str, Any],
+    fallback_payload: dict[str, Any],
+    *,
+    content_blueprint: dict[str, str],
+    section_briefs: dict[str, list[str]],
+    title: str,
+) -> dict[str, Any]:
+    normalized_sections, active_section_keys = _repair_explore_sections(
+        ai_result.get("detailed_sections"),
+        fallback_sections=fallback_payload.get("detailed_sections") or {},
+        content_blueprint=content_blueprint,
+        title=title,
+    )
+
+    adaptation = ai_result.get("teaching_adaptation")
+    fallback_adaptation = fallback_payload["teaching_adaptation"]
+    if not isinstance(adaptation, dict):
+        adaptation = {}
+
+    return {
+        "title": title,
+        "summary": _build_detail_summary_from_sections(
+            normalized_sections,
+            build_summary_from_briefs(
+                section_briefs,
+                key="detail_focus",
+                fallback_text=fallback_payload.get("summary") or "",
+            ),
+        ),
+        "key_points": _normalize_explore_output_key_points(
+            ai_result.get("key_points"),
+            build_key_points_from_briefs(
+                section_briefs,
+                fallback_payload.get("key_points") or [],
+            ),
+            prompt=title,
+            focus_topic=title,
+            detailed_sections=normalized_sections,
+        ),
+        "topic_tags": fallback_payload.get("topic_tags") or [],
+        "content_blueprint": content_blueprint,
+        "section_briefs": section_briefs,
+        "active_section_keys": active_section_keys,
+        "detailed_sections": normalized_sections,
+        "teaching_adaptation": {
+            "focus_priority": normalize_text(
+                str(adaptation.get("focus_priority") or fallback_adaptation["focus_priority"])
+            ),
+            "tone": normalize_text(str(adaptation.get("tone") or fallback_adaptation["tone"])),
+            "depth_control": normalize_text(
+                str(adaptation.get("depth_control") or fallback_adaptation["depth_control"])
+            ),
+            "example_strategy": normalize_text(
+                str(adaptation.get("example_strategy") or fallback_adaptation["example_strategy"])
+            ),
+        },
+    }
+
+
+def _raw_explore_result_needs_rewrite(
+    focus_topic: str,
+    prompt: str,
+    ai_result: dict[str, Any],
+) -> bool:
+    title = normalize_text(str(ai_result.get("title") or ""))
+    summary_lines = _summary_lines(ai_result.get("summary"))
+    key_points = _normalize_key_points(ai_result.get("key_points"))
+    sections = ai_result.get("detailed_sections")
+    if not title or title.endswith("?"):
+        return True
+    if not isinstance(sections, dict):
+        return True
+
+    question_type = _detect_explore_kind(prompt)
+    core_content = normalize_multiline_text((sections.get("core_concept") or {}).get("content"))
+    mechanism_content = normalize_multiline_text((sections.get("mechanism") or {}).get("content"))
+    relationship_content = normalize_multiline_text(
+        (sections.get("components_and_relationships") or {}).get("content")
+    )
+
+    if len(core_content) < 60 or _looks_generic_text(core_content):
+        return True
+    if not _is_direct_explore_answer(prompt, focus_topic, core_content):
+        return True
+    if mechanism_content and _looks_generic_text(mechanism_content):
+        return True
+    if summary_lines:
+        if len(summary_lines) < 3:
+            return True
+        if not _is_direct_explore_answer(prompt, focus_topic, summary_lines[0]):
+            return True
+    if key_points and _key_points_need_fallback(prompt, focus_topic, key_points):
+        return True
+
+    weak_sections = sum(
+        1
+        for content in (core_content, mechanism_content, relationship_content)
+        if len(content) < 50 or _looks_generic_text(content) or _contains_trailing_ellipsis(content)
+    )
+    if weak_sections >= 2:
+        return True
+    if core_content and mechanism_content and semantic_overlap_ratio(core_content, mechanism_content) > 0.84:
+        return True
+    if (
+        question_type == "structure"
+        and _focus_overlap_ratio(relationship_content, focus_topic) < 0.28
+    ):
+        return True
+
+    compare_subjects = _parse_compare_subjects(prompt)
+    if compare_subjects:
+        lowered = strip_accents(" ".join([title, core_content, mechanism_content, relationship_content])).lower()
+        if not all(strip_accents(subject).lower() in lowered for subject in compare_subjects):
+            return True
+
+    return False
+
+
+def _violates_explore_plan(ai_result: dict[str, Any], plan: dict[str, Any]) -> bool:
+    must_include = [
+        normalize_topic_phrase(str(item))
+        for item in plan.get("must_include", [])
+        if str(item).strip()
+    ]
+    if not must_include:
+        return False
+
+    sections = ai_result.get("detailed_sections") or {}
+    combined = normalize_text(
+        " ".join(
+            [
+                str(ai_result.get("title") or ""),
+                str(ai_result.get("summary") or ""),
+                " ".join(str(item) for item in ai_result.get("key_points") or []),
+                str((sections.get("core_concept") or {}).get("content") or ""),
+                str((sections.get("mechanism") or {}).get("content") or ""),
+                str((sections.get("components_and_relationships") or {}).get("content") or ""),
+            ]
+        )
+    )
+    haystack = strip_accents(combined).lower()
+
+    if plan.get("question_type") == "comparison":
+        targets = [strip_accents(item).lower() for item in plan.get("comparison_targets", []) if item]
+        if targets and not all(target in haystack for target in targets):
+            return True
+
+    covered = sum(1 for item in must_include if strip_accents(item).lower() in haystack)
+    return covered < min(2, len(must_include))

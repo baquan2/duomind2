@@ -13,6 +13,7 @@ class GeminiService:
         self._configured_api_key: str | None = None
         self._configured_model_name: str | None = None
         self._text_model: Any | None = None
+        self._precise_text_model: Any | None = None
         self._json_model: Any | None = None
 
     def _configure(self) -> None:
@@ -32,6 +33,7 @@ class GeminiService:
         self._configured_api_key = api_key
         self._configured_model_name = model_name
         self._text_model = None
+        self._precise_text_model = None
         self._json_model = None
 
     def _get_text_model(self) -> Any:
@@ -46,6 +48,19 @@ class GeminiService:
                 },
             )
         return self._text_model
+
+    def _get_precise_text_model(self) -> Any:
+        self._configure()
+        if self._precise_text_model is None:
+            self._precise_text_model = genai.GenerativeModel(
+                model_name=self._configured_model_name,
+                generation_config={
+                    "temperature": 0.25,
+                    "top_p": 0.8,
+                    "max_output_tokens": 8192,
+                },
+            )
+        return self._precise_text_model
 
     def _get_json_model(self) -> Any:
         self._configure()
@@ -84,8 +99,9 @@ class GeminiService:
             return cleaned[start : end + 1]
         return cleaned
 
-    async def generate_text(self, prompt: str) -> str:
-        response = self._get_text_model().generate_content(prompt)
+    async def generate_text(self, prompt: str, *, precise: bool = False) -> str:
+        model = self._get_precise_text_model() if precise else self._get_text_model()
+        response = model.generate_content(prompt)
         return self._extract_text(response)
 
     async def generate_json(self, prompt: str) -> dict[str, Any]:

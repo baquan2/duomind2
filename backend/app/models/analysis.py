@@ -24,6 +24,7 @@ class SourceReference(BaseModel):
 class AnalyzeResult(BaseModel):
     session_id: str
     title: str
+    verdict: str
     accuracy_score: int | None
     accuracy_assessment: str
     summary: str

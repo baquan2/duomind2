@@ -35,8 +35,8 @@ const LEGACY_SECTION_TITLE_MAP: Record<string, string> = {
 function extractSummaryBullets(summary: string) {
   return summary
     .split(/\n+/)
-    .map((line) => line.replace(/^[-*•]\s*/, "").trim())
-    .filter(Boolean)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !line.endsWith("..."))
 }
 
 function normalizeLegacySectionTitle(title: string) {
@@ -57,9 +57,12 @@ const SECTION_CONFIG: Array<{
 ]
 
 export function KnowledgeDetail({ data }: KnowledgeDetailProps) {
-  const summaryBullets = data.section_briefs?.detail_focus?.length
-    ? data.section_briefs.detail_focus.slice(0, 4)
-    : extractSummaryBullets(data.summary)
+  const detailSummaryBullets = extractSummaryBullets(data.summary)
+  const summaryBullets = detailSummaryBullets.length
+    ? detailSummaryBullets.slice(0, 4)
+    : data.section_briefs?.detail_focus?.length
+      ? data.section_briefs.detail_focus.slice(0, 4)
+      : []
   const activeKeys = data.active_section_keys?.length
     ? data.active_section_keys
     : SECTION_CONFIG.map((section) => section.key)

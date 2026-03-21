@@ -8,6 +8,7 @@ import { useState } from "react"
 import { SessionActions } from "@/components/history/SessionActions"
 import { Badge } from "@/components/ui/badge"
 import { toggleBookmark } from "@/lib/api/history"
+import { getAnalyzeVerdictMeta, normalizeAnalyzeVerdict } from "@/lib/analyze-verdict"
 import type { LearningSession } from "@/types"
 import { cn } from "@/lib/utils"
 
@@ -23,6 +24,17 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
 
   const isAnalyze = session.session_type === "analyze"
   const Icon = isAnalyze ? ScanSearch : FlaskConical
+  const analyzeVerdict = isAnalyze
+    ? normalizeAnalyzeVerdict(
+        session.verdict,
+        session.accuracy_assessment,
+        session.corrections?.length ?? 0,
+        session.sources?.length ?? 0
+      )
+    : null
+  const analyzeVerdictMeta = analyzeVerdict
+    ? getAnalyzeVerdictMeta(analyzeVerdict)
+    : null
 
   const handleBookmark = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -61,19 +73,17 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
                 {isAnalyze ? "Phân tích" : "Khám phá"}
               </Badge>
 
-              {session.accuracy_score != null ? (
+              {isAnalyze && analyzeVerdictMeta ? (
                 <Badge
                   variant="outline"
                   className={cn(
                     "bg-background",
-                    session.accuracy_score >= 70
+                    analyzeVerdict === "correct"
                       ? "text-emerald-700"
-                      : session.accuracy_score >= 40
-                        ? "text-amber-700"
-                        : "text-rose-700"
+                      : "text-rose-700"
                   )}
                 >
-                  Độ chính xác {session.accuracy_score}%
+                  {analyzeVerdictMeta.shortLabel}
                 </Badge>
               ) : null}
             </div>

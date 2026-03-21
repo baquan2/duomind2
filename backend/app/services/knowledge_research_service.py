@@ -11,6 +11,7 @@ from app.utils.helpers import extract_keywords_from_text, normalize_text, normal
 
 DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/"
 MAX_RESULTS = 4
+SOURCE_FETCH_TIMEOUT_SECONDS = 4.0
 PREFERRED_DOMAINS = (
     "wikipedia.org",
     "britannica.com",
@@ -163,7 +164,11 @@ async def search_knowledge_sources(
     collected: list[dict[str, str]] = []
     seen_urls: set[str] = set()
 
-    async with httpx.AsyncClient(timeout=6.0, follow_redirects=True, headers=headers) as client:
+    async with httpx.AsyncClient(
+        timeout=SOURCE_FETCH_TIMEOUT_SECONDS,
+        follow_redirects=True,
+        headers=headers,
+    ) as client:
         for query in queries:
             try:
                 response = await client.get(DUCKDUCKGO_HTML_URL, params={"q": query})

@@ -9,6 +9,7 @@ import {
   extractSourceLabel,
   stripSourceLabel,
 } from "@/lib/analysis-source"
+import { normalizeAnalyzeVerdict } from "@/lib/analyze-verdict"
 import { getReadableGeneratedTitle } from "@/lib/generated-content"
 
 export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResult {
@@ -21,6 +22,12 @@ export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResu
       session.infographic_data?.title,
       rawContent,
       session.summary
+    ),
+    verdict: normalizeAnalyzeVerdict(
+      session.verdict,
+      session.accuracy_assessment,
+      session.corrections?.length ?? 0,
+      session.sources?.length ?? 0
     ),
     accuracy_score: session.accuracy_score ?? null,
     accuracy_assessment:

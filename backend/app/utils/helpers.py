@@ -473,37 +473,38 @@ def get_user_context(onboarding_data: dict | None) -> dict[str, Any]:
 
 
 def build_prompt_learning_context(user_context: dict[str, Any] | None) -> dict[str, Any]:
-    """Keep only context that should influence example choice, pacing, and depth."""
+    """Keep only context that materially improves examples or depth control."""
     if not user_context:
         return {}
 
     fields = (
-        "user_persona_description",
         "difficulty_level",
         "target_role",
         "current_focus",
-        "current_challenges",
         "desired_outcome",
         "learning_constraints",
-        "learning_goals",
         "learning_style",
         "daily_study_minutes",
-        "busyness_level",
-        "practical_example_need",
-        "study_pacing",
-        "content_depth",
     )
 
     prompt_context: dict[str, Any] = {}
+    generic_string_values = {
+        "general_learner",
+        "general_knowledge",
+        "mixed",
+        "intermediate",
+    }
     for field in fields:
         value = user_context.get(field)
         if isinstance(value, str):
             cleaned = normalize_text(value)
             if not cleaned or cleaned.lower() == "unknown":
                 continue
+            if cleaned.lower() in generic_string_values:
+                continue
             prompt_context[field] = cleaned
             continue
-        if isinstance(value, (int, float)) and value:
+        if isinstance(value, (int, float)) and value and value != 30:
             prompt_context[field] = value
 
     return prompt_context

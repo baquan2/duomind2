@@ -3,6 +3,7 @@
 import { motion } from "framer-motion"
 import {
   BookOpenCheck,
+  ExternalLink,
   FileText,
   Network,
   Sparkles,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react"
 import type { ReactNode } from "react"
 
-import { AccuracyBadge } from "@/components/analyze/AccuracyBadge"
+import { AnalysisVerdictBadge } from "@/components/analyze/AccuracyBadge"
 import { SummaryCard } from "@/components/analyze/SummaryCard"
 import { KnowledgeDetail } from "@/components/explore/KnowledgeDetail"
 import { MindMapViewer } from "@/components/mindmap/MindMapViewer"
@@ -47,6 +48,7 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
   const links = hasSources
     ? QUICK_LINKS
     : QUICK_LINKS.filter((link) => link.href !== "#nguon-xac-minh")
+  const highlightedSources = result.sources.slice(0, 3)
 
   return (
     <motion.div
@@ -91,11 +93,7 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
           ) : null}
 
           <div className="flex flex-wrap items-start gap-3">
-            <AccuracyBadge
-              score={result.accuracy_score}
-              assessment={result.accuracy_assessment}
-              compact
-            />
+            <AnalysisVerdictBadge verdict={result.verdict} compact />
             <div className="flex flex-wrap gap-2">
               {links.map((link) => (
                 <a
@@ -108,6 +106,28 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
               ))}
             </div>
           </div>
+
+          {hasSources ? (
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Nguồn tham khảo nhanh
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {highlightedSources.map((source) => (
+                  <a
+                    key={`${source.label}-${source.url}`}
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-card px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-primary/30 hover:text-primary"
+                  >
+                    <span className="truncate">{source.label}</span>
+                    <ExternalLink className="size-3.5 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -140,7 +160,11 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
             title="Nguồn xác minh"
             description="Các nguồn này được dùng để kiểm tra lại tính đúng sai của nội dung và giảm việc model trả lời theo trí nhớ mơ hồ."
           />
-          <SourcesPanel sources={result.sources} />
+          <SourcesPanel
+            sources={result.sources}
+            title="Nguồn tham khảo"
+            description="Mỗi nguồn đều mở trực tiếp ra trang web hoặc bài viết liên quan để bạn kiểm tra lại nội dung phân tích."
+          />
         </section>
       ) : null}
 

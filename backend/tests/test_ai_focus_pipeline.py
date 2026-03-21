@@ -1,7 +1,20 @@
 from app.routers.analyze import _build_analysis_fallback, _extract_analysis_focus, _extract_analysis_goal
-from app.routers.explore import _build_fallback_payload, _key_points_need_fallback
+from app.routers.explore import (
+    _build_fallback_payload,
+    _key_points_need_fallback,
+    _normalize_explore_summary,
+)
 from app.routers.quiz import _quiz_questions_need_fallback
-from app.services.mentor_service import _build_decision_summary, _normalize_items, _normalize_list_of_strings
+from app.services.mentor_service import (
+    _align_result_to_target_role,
+    _build_decision_summary,
+    _low_signal,
+    _prune_result_for_intent,
+    _normalize_items,
+    _normalize_list_of_strings,
+    build_personalized_fallback,
+    detect_mentor_intent,
+)
 from app.utils.content_blueprint import (
     build_blueprint_fallback,
     build_section_content_from_blueprint,
@@ -231,6 +244,29 @@ def test_blueprint_section_briefs_do_not_clip_items_with_ellipsis() -> None:
         assert all("..." not in item for item in section_items)
 
 
+def test_blueprint_section_briefs_anchor_to_main_question() -> None:
+    blueprint = build_blueprint_fallback(
+        title="Business Analyst va Product Analyst",
+        question_type="comparison",
+        learner_context={"target_role": "Business Analyst"},
+        comparison_targets=["Business Analyst", "Product Analyst"],
+    )
+
+    briefs = build_section_briefs(
+        blueprint,
+        title="Business Analyst va Product Analyst",
+        question_type="comparison",
+        mode="explore",
+        main_question="Business Analyst khac Product Analyst o diem nao?",
+        focus_topic="Business Analyst va Product Analyst",
+        comparison_targets=["Business Analyst", "Product Analyst"],
+    )
+
+    assert "Business Analyst" in briefs["overview"][0]
+    assert "Product Analyst" in briefs["overview"][0]
+    assert len(briefs["core_takeaways"]) >= 4
+
+
 def test_blueprint_section_content_keeps_complete_sentences() -> None:
     blueprint = build_blueprint_fallback(
         title="SQL",
@@ -358,6 +394,236 @@ def test_mentor_normalizers_keep_full_items_without_ellipsis() -> None:
             "next_step": "next_step",
         },
     )
+
+
+def test_align_result_to_target_role_does_not_override_existing_answer() -> None:
+    result = {
+        "answer": "Thi truong hien tai uu tien kha nang lam ro requirement va process mapping truoc.",
+        "career_paths": [],
+        "skill_gaps": [],
+        "recommended_learning_steps": [],
+        "suggested_followups": [],
+    }
+
+    aligned = _align_result_to_target_role(
+        result,
+        {"target_role": "Business Analyst"},
+        intent="career_fit",
+    )
+
+    assert aligned["answer"] == "Thi truong hien tai uu tien kha nang lam ro requirement va process mapping truoc."
+    assert aligned["career_paths"]
+    assert aligned["skill_gaps"]
+
+
+def test_align_result_to_target_role_skips_general_guidance_alignment() -> None:
+    result = {
+        "answer": "SQL la ngon ngu truy van duoc dung de thao tac va truy van du lieu trong co so du lieu quan he.",
+        "career_paths": [],
+        "skill_gaps": [],
+        "recommended_learning_steps": [],
+        "suggested_followups": [],
+    }
+
+    aligned = _align_result_to_target_role(
+        result,
+        {"target_role": "Business Analyst"},
+        intent="general_guidance",
+    )
+
+    assert aligned["career_paths"] == []
+    assert aligned["skill_gaps"] == []
+
+
+def test_mentor_market_outlook_fallback_stays_on_market_signal() -> None:
+    result = build_personalized_fallback(
+        profile=None,
+        onboarding={
+            "target_role": "Data Analyst",
+            "desired_outcome": "xin intern",
+            "daily_study_minutes": 30,
+        },
+        intent="market_outlook",
+        message="Thi truong hien tai dang can gi cho Data Analyst?",
+        market_signals=[],
+        web_research=[
+            {
+                "title": "Data Analyst demand",
+                "snippet": "Nha tuyen dung nhac SQL, dashboard va business insight.",
+                "source_name": "Example source",
+                "url": "https://example.com/data-analyst",
+            }
+        ],
+    )
+
+    lowered_answer = result["answer"].lower()
+    assert "jd" in lowered_answer or "thi truong" in lowered_answer
+    assert len(result["recommended_learning_steps"]) == 2
+
+
+def test_detect_mentor_intent_scores_roadmap_above_generic_market_terms() -> None:
+    intent = detect_mentor_intent(
+        "Thi truong dang yeu cau nhung ky nang nao va toi nen hoc gi truoc theo lo trinh?"
+    )
+
+    assert intent == "learning_roadmap"
+
+
+def test_learning_roadmap_fallback_keeps_ordered_steps_in_answer() -> None:
+    result = build_personalized_fallback(
+        profile=None,
+        onboarding={
+            "target_role": "Data Analyst",
+            "desired_outcome": "co roadmap hoc 8 tuan",
+            "daily_study_minutes": 45,
+        },
+        intent="learning_roadmap",
+        message="Len cho toi lo trinh hoc Data Analyst tu dau.",
+        market_signals=[],
+        web_research=[],
+    )
+
+    lowered_answer = result["answer"].lower()
+    assert "buoc 1" in lowered_answer
+    assert "buoc 2" in lowered_answer
+    assert len(result["recommended_learning_steps"]) == 3
+
+
+def test_intent_aware_decision_summary_uses_roadmap_headline() -> None:
+    summary = _build_decision_summary(
+        {
+            "skill_gaps": [
+                {
+                    "skill": "SQL",
+                    "suggested_action": "Buoc 1 la hoc SQL nen tang va lam bai tap query co ban.",
+                }
+            ],
+            "recommended_learning_steps": [
+                "Buoc 1 la hoc SQL nen tang va lam bai tap query co ban.",
+                "Buoc 2 la lam sach du lieu va doc metric co ban.",
+                "Buoc 3 la dung dashboard va viet insight tu du lieu.",
+            ],
+            "career_paths": [{"role": "Data Analyst"}],
+            "market_signals": [],
+        },
+        {
+            "target_role": "Data Analyst",
+            "desired_outcome": "co roadmap hoc 8 tuan",
+            "daily_study_minutes": 45,
+        },
+        intent="learning_roadmap",
+    )
+
+    lowered_headline = summary["headline"].lower()
+    assert "roadmap" in lowered_headline or "buoc" in lowered_headline
+    assert "SQL" not in summary["priority_label"]
+
+
+def test_business_analyst_fallback_is_not_forced_into_data_track() -> None:
+    result = build_personalized_fallback(
+        profile=None,
+        onboarding={
+            "target_role": "Business Analyst",
+            "desired_outcome": "xin intern BA",
+            "daily_study_minutes": 30,
+        },
+        intent="career_fit",
+        message="Toi hop voi huong Business Analyst khong?",
+        market_signals=[],
+        web_research=[],
+    )
+
+    assert result["career_paths"]
+    assert result["career_paths"][0]["role"] == "Business Analyst"
+
+
+def test_general_guidance_specific_answer_is_not_flagged_low_signal() -> None:
+    result = {
+        "decision_summary": {
+            "headline": "SQL la ngon ngu truy van du lieu.",
+            "priority_label": "Khai niem cot loi",
+            "priority_value": "SQL",
+            "reason": "No duoc dung de truy van va thao tac du lieu co cau truc.",
+            "next_action": "Doc them 3 nhom lenh chinh cua SQL.",
+            "confidence_note": "Khong can them boi canh ca nhan de tra loi cau hoi nay.",
+        },
+        "recommended_learning_steps": [],
+        "skill_gaps": [],
+        "career_paths": [],
+        "market_signals": [],
+    }
+
+    assert (
+        _low_signal(
+            "SQL la ngon ngu truy van co cau truc duoc dung de tao, sua, xoa va truy van du lieu trong he quan tri co so du lieu quan he.",
+            "SQL la gi?",
+            {"target_role": "Business Analyst"},
+            result,
+        )
+        is False
+    )
+
+
+def test_explore_summary_prefers_direct_answer_over_generic_brief_fallback() -> None:
+    summary = _normalize_explore_summary(
+        "- SQL la ngon ngu truy van co cau truc duoc dung de lam viec voi co so du lieu quan he.\n"
+        "- SQL tap trung vao dinh nghia cau truc, thao tac du lieu va truy van.\n"
+        "- Gia tri cua SQL nam o kha nang lay va bien doi du lieu bang lenh co cau truc.\n"
+        "- Khong nen dong nhat SQL voi toan bo he quan tri co so du lieu.",
+        [
+            "SQL duoc dung de tao bang, thao tac du lieu va truy van thong tin.",
+            "Can phan biet SQL voi he quan tri co so du lieu.",
+            "Co the nhin SQL theo nhom lenh va muc dich su dung.",
+            "SQL co gia tri khi can xu ly du lieu co cau truc.",
+        ],
+        "- Day la mot chu de quan trong.\n- Nguoi hoc nen nam tong quan truoc.",
+        prompt="SQL la gi?",
+        focus_topic="SQL",
+        detailed_sections={
+            "core_concept": {
+                "content": "SQL la ngon ngu truy van co cau truc duoc dung de lam viec voi co so du lieu quan he."
+            }
+        },
+    )
+
+    assert "SQL la ngon ngu truy van" in summary
+    assert "Day la mot chu de quan trong" not in summary
+
+
+def test_prune_result_for_market_outlook_hides_irrelevant_sections() -> None:
+    pruned = _prune_result_for_intent(
+        {
+            "career_paths": [{"role": "Data Analyst"}],
+            "market_signals": [{"role_name": "Data Analyst"}],
+            "skill_gaps": [{"skill": "SQL"}],
+            "recommended_learning_steps": ["Buoc 1", "Buoc 2", "Buoc 3"],
+            "suggested_followups": [],
+            "sources": [],
+        },
+        "market_outlook",
+    )
+
+    assert pruned["career_paths"] == []
+    assert pruned["skill_gaps"] == []
+    assert len(pruned["recommended_learning_steps"]) == 2
+    items = _normalize_items(
+        [
+            {
+                "role": "Data Analyst",
+                "fit_reason": "Phu hop vi ban dang chuyen truc sang du an phan tich du lieu va can dau ra thuc hanh ro rang.",
+                "entry_level": "Intern / Junior",
+                "required_skills": ["SQL", "Excel", "Power BI", "Dashboarding"],
+                "next_step": "Lam mot dashboard tu du lieu that va viet 3 insight kinh doanh.",
+            }
+        ],
+        {
+            "role": "role",
+            "fit_reason": "fit_reason",
+            "entry_level": "entry_level",
+            "required_skills": "required_skills",
+            "next_step": "next_step",
+        },
+    )
     steps = _normalize_list_of_strings(
         [
             "Trong 7 ngay toi, hay xem 5 JD Data Analyst va ghi lai 3 nhom ky nang xuat hien lap lai nhieu nhat."
@@ -370,3 +636,48 @@ def test_mentor_normalizers_keep_full_items_without_ellipsis() -> None:
     assert "..." not in items[0]["next_step"]
     assert all("..." not in skill for skill in items[0]["required_skills"])
     assert "..." not in steps[0]
+
+
+def test_direct_knowledge_question_maps_to_general_guidance() -> None:
+    assert detect_mentor_intent("Business Analyst khac Product Analyst o diem nao?") == "general_guidance"
+
+
+def test_general_guidance_fallback_keeps_knowledge_answer_shape() -> None:
+    result = build_personalized_fallback(
+        profile=None,
+        onboarding={
+            "target_role": "Business Analyst",
+            "current_focus": "Requirement analysis",
+        },
+        intent="general_guidance",
+        message="Business Analyst khac Product Analyst o diem nao?",
+        market_signals=[],
+        web_research=[],
+    )
+
+    assert result["career_paths"] == []
+    assert result["skill_gaps"] == []
+    assert "Business Analyst" in result["answer"]
+    assert "Product Analyst" in result["answer"]
+
+
+def test_general_guidance_answer_matching_question_is_not_low_signal() -> None:
+    answer = (
+        "Business Analyst va Product Analyst khac nhau o bai toan chinh, dau ra va bang chung su dung. "
+        "Business Analyst lam ro requirement, quy trinh va pham vi nghiep vu; Product Analyst doc metric, hanh vi san pham "
+        "va du lieu de rut insight. Vi vay khong nen dong nhat hai vai tro chi vi cung lien quan den san pham."
+    )
+
+    assert (
+        _low_signal(
+            answer,
+            "Business Analyst khac Product Analyst o diem nao?",
+            {"target_role": "Business Analyst"},
+            {
+                "decision_summary": {
+                    "headline": "Business Analyst va Product Analyst khac nhau o bai toan chinh."
+                }
+            },
+        )
+        is False
+    )

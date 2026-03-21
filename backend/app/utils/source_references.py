@@ -3,7 +3,7 @@ import asyncio
 from app.utils.helpers import normalize_text
 
 
-SOURCE_SEARCH_TIMEOUT_SECONDS = 6.0
+SOURCE_SEARCH_TIMEOUT_SECONDS = 4.0
 
 
 def normalize_source_references(raw_sources: object, *, limit: int = 5) -> list[dict[str, str]]:

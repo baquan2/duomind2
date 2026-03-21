@@ -3,6 +3,8 @@ export function extractSummaryBullets(
   fallbackPoints: string[] = [],
   limit = 5
 ) {
+  const hasEllipsis = (value: string) => value.endsWith("...")
+
   const normalized = (summary || "").trim()
   if (!normalized) {
     return fallbackPoints.slice(0, limit)
@@ -10,8 +12,8 @@ export function extractSummaryBullets(
 
   const fromLines = normalized
     .split(/\n+/)
-    .map((line) => line.replace(/^[-*•]\s*/, "").trim())
-    .filter(Boolean)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !hasEllipsis(line))
 
   if (fromLines.length > 1) {
     return fromLines.slice(0, limit)
@@ -19,11 +21,15 @@ export function extractSummaryBullets(
 
   const fromSentences = normalized
     .split(/(?<=[.!?])\s+/)
-    .map((line) => line.replace(/^[-*•]\s*/, "").trim())
-    .filter(Boolean)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line && !hasEllipsis(line))
 
   if (fromSentences.length > 1) {
     return fromSentences.slice(0, limit)
+  }
+
+  if (hasEllipsis(normalized)) {
+    return fallbackPoints.slice(0, limit)
   }
 
   return [normalized]

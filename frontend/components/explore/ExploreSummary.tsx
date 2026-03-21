@@ -17,12 +17,20 @@ export function ExploreSummary({
   knowledgeDetailData,
   topicTags: _topicTags,
 }: ExploreSummaryProps) {
-  const overviewBullets = knowledgeDetailData?.section_briefs?.overview?.length
-    ? knowledgeDetailData.section_briefs.overview.slice(0, 4)
-    : extractSummaryBullets(summary, keyPoints, 4)
-  const theoryBullets = knowledgeDetailData?.section_briefs?.core_takeaways?.length
-    ? knowledgeDetailData.section_briefs.core_takeaways.slice(0, 5)
-    : keyPoints.slice(0, 5)
+  const directOverviewBullets = extractSummaryBullets(summary, keyPoints, 4)
+  const overviewBullets =
+    directOverviewBullets.length >= 3
+      ? directOverviewBullets
+      : knowledgeDetailData?.section_briefs?.overview?.length
+        ? knowledgeDetailData.section_briefs.overview.slice(0, 4)
+        : directOverviewBullets
+
+  const theoryBullets =
+    keyPoints.length >= 3
+      ? keyPoints.slice(0, 5)
+      : knowledgeDetailData?.section_briefs?.core_takeaways?.length
+        ? knowledgeDetailData.section_briefs.core_takeaways.slice(0, 5)
+        : extractSummaryBullets(knowledgeDetailData?.summary, keyPoints, 5)
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[1fr_1fr]">
