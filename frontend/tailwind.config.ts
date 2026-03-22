@@ -22,8 +22,8 @@ const config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-outfit)", ...defaultTheme.fontFamily.sans],
-        display: ["var(--font-space-grotesk)", ...defaultTheme.fontFamily.sans],
+        sans: ["var(--font-be-vietnam-pro)", ...defaultTheme.fontFamily.sans],
+        display: ["var(--font-nunito)", "var(--font-be-vietnam-pro)", ...defaultTheme.fontFamily.sans],
       },
       colors: {
         border: "hsl(var(--border))",

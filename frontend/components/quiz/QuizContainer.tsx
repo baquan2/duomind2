@@ -15,7 +15,7 @@ import { generateQuiz, submitQuiz } from "@/lib/api/quiz"
 import type { QuizQuestion, QuizSubmissionResult } from "@/types"
 
 interface QuizContainerProps {
-  sessionId: string
+  sessionId?: string | null
 }
 
 type Phase = "idle" | "loading" | "quiz" | "result"
@@ -38,6 +38,26 @@ export function QuizContainer({ sessionId }: QuizContainerProps) {
   )
   const currentQuestion = multipleChoiceQuestions[currentIndex]
 
+  if (!sessionId) {
+    return (
+      <Card className="border border-border/70 bg-card/92">
+        <CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+          <div className="flex size-14 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <BrainCircuit className="size-6" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="font-display text-2xl font-semibold">Chưa thể tạo quiz</h3>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+              Kết quả AI đã có, nhưng phiên này chưa lưu được vào database nên quiz chưa khả dụng.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const activeSessionId = sessionId
+
   const handleStart = async () => {
     setPhase("loading")
     setError(null)
@@ -46,7 +66,7 @@ export function QuizContainer({ sessionId }: QuizContainerProps) {
     setCurrentIndex(0)
 
     try {
-      const response = await generateQuiz(sessionId, 5)
+      const response = await generateQuiz(activeSessionId, 5)
       setQuestions(response.questions)
 
       const nextMcq = response.questions.filter(
@@ -91,7 +111,7 @@ export function QuizContainer({ sessionId }: QuizContainerProps) {
 
     try {
       const response = await submitQuiz(
-        sessionId,
+        activeSessionId,
         multipleChoiceQuestions
           .filter((question) => answers[question.id])
           .map((question) => ({
@@ -121,8 +141,7 @@ export function QuizContainer({ sessionId }: QuizContainerProps) {
           <div className="space-y-2">
             <h3 className="font-display text-2xl font-semibold">Sẵn sàng làm quiz?</h3>
             <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-              Hệ thống sẽ tạo bộ câu hỏi trắc nghiệm và một vài câu hỏi mở dựa trên
-              phiên học hiện tại của bạn.
+              Hệ thống sẽ tạo bộ câu hỏi trắc nghiệm và một vài câu hỏi mở dựa trên phiên học hiện tại.
             </p>
           </div>
           <Button onClick={handleStart}>Bắt đầu quiz</Button>
@@ -141,9 +160,7 @@ export function QuizContainer({ sessionId }: QuizContainerProps) {
       <Card className="border border-border/70 bg-card/92">
         <CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center text-muted-foreground">
           <Loader2 className="size-6 animate-spin text-primary" />
-          <p className="text-sm">
-            AI đang tạo và chấm bộ câu hỏi cho phiên học này...
-          </p>
+          <p className="text-sm">AI đang tạo và chấm bộ câu hỏi cho phiên học này...</p>
         </CardContent>
       </Card>
     )
@@ -157,9 +174,7 @@ export function QuizContainer({ sessionId }: QuizContainerProps) {
         {openQuestions.length ? (
           <div className="space-y-4">
             <div>
-              <h3 className="font-display text-2xl font-semibold">
-                Câu hỏi mở để đào sâu
-              </h3>
+              <h3 className="font-display text-2xl font-semibold">Câu hỏi mở để đào sâu</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 Phần này đánh giá cách lập luận và tư duy phản biện thay vì đúng sai tuyệt đối.
               </p>

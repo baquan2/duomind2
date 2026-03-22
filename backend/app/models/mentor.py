@@ -40,8 +40,13 @@ class MentorMessageItem(BaseModel):
     role: MessageRole
     intent: str | None = None
     content: str
+    answer_mode: str | None = None
     response_data: dict[str, Any] | None = None
     sources: list[dict[str, Any]] = Field(default_factory=list)
+    related_materials: list[dict[str, Any]] = Field(default_factory=list)
+    request_payload: dict[str, Any] | None = None
+    context_snapshot: dict[str, Any] | None = None
+    generation_trace: dict[str, Any] | None = None
     created_at: str | None = None
 
 
@@ -60,6 +65,7 @@ class MentorChatResponse(BaseModel):
     message_id: str
     intent: MentorIntent
     answer: str
+    answer_mode: str | None = None
     career_paths: list[dict[str, Any]] = Field(default_factory=list)
     market_signals: list[dict[str, Any]] = Field(default_factory=list)
     skill_gaps: list[dict[str, Any]] = Field(default_factory=list)
@@ -67,4 +73,9 @@ class MentorChatResponse(BaseModel):
     recommended_learning_steps: list[str] = Field(default_factory=list)
     suggested_followups: list[str] = Field(default_factory=list)
     sources: list[dict[str, Any]] = Field(default_factory=list)
+    related_materials: list[dict[str, Any]] = Field(default_factory=list)
+    request_payload: dict[str, Any] | None = None
+    context_snapshot: dict[str, Any] | None = None
+    generation_trace: dict[str, Any] | None = None
+    save_metadata: dict[str, Any] | None = None
     messages: list[MentorMessageItem] = Field(default_factory=list)

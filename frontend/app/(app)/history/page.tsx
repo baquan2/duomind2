@@ -15,6 +15,7 @@ import { getKnowledgeReport, getSessions } from "@/lib/api/history"
 import { cn } from "@/lib/utils"
 import type { KnowledgeReport as KnowledgeReportData, LearningSession } from "@/types"
 
+
 type SessionFilter = "all" | "analyze" | "explore"
 
 const filterOptions: Array<{
@@ -25,6 +26,7 @@ const filterOptions: Array<{
   { value: "analyze", label: "Phân tích" },
   { value: "explore", label: "Khám phá" },
 ]
+
 
 export default function HistoryPage() {
   const [activeFilter, setActiveFilter] = useState<SessionFilter>("all")
@@ -62,7 +64,7 @@ export default function HistoryPage() {
     return activeFilter === "all" || session.session_type === activeFilter
   })
 
-  const counts = {
+  const counts = data?.counts ?? {
     all: sessions.length,
     analyze: sessions.filter((session) => session.session_type === "analyze").length,
     explore: sessions.filter((session) => session.session_type === "explore").length,
@@ -82,8 +84,8 @@ export default function HistoryPage() {
                 Lịch sử học tập và kho phiên học của bạn
               </h1>
               <p className="text-sm leading-7 text-foreground/75 sm:text-base">
-                Xem lại các phiên phân tích, khám phá, đánh dấu những nội dung quan
-                trọng và tải kết quả về máy khi cần lưu trữ.
+                Xem lại các phiên Phân tích và Khám phá, mở trace khi cần debug, và tải
+                lại toàn bộ nội dung học tập đã lưu.
               </p>
             </div>
 

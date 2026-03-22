@@ -33,7 +33,6 @@ import {
   getMentorThreads,
   sendMentorMessage,
 } from "@/lib/api/mentor"
-import { getMyOnboarding } from "@/lib/api/onboarding"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { buildProfileReadiness } from "@/lib/learning-roadmap"
 import { cn } from "@/lib/utils"
@@ -89,10 +88,9 @@ export default function MentorPage() {
 
     async function bootstrap() {
       try {
-        const [threadData, questionData, onboardingData] = await Promise.all([
+        const [threadData, questionData] = await Promise.all([
           getMentorThreads(),
           getMentorSuggestedQuestions(),
-          getMyOnboarding(),
         ])
 
         if (!mounted) {
@@ -101,7 +99,6 @@ export default function MentorPage() {
 
         setThreads(threadData)
         setSuggestedQuestions(questionData.questions)
-        setOnboarding(onboardingData)
 
         if (threadData.length) {
           const firstThreadId = threadData[0].id
@@ -241,10 +238,10 @@ export default function MentorPage() {
           <Badge className="border-0 bg-primary text-primary-foreground">AI Mentor</Badge>
           <div className="max-w-4xl space-y-3">
             <h1 className="font-display text-4xl font-semibold leading-tight text-balance lg:text-5xl">
-              Hỏi mentor về nghề nghiệp, kỹ năng và lộ trình học theo đúng bối cảnh của bạn
+              Hỏi Mentor AI bất kỳ điều gì, từ kiến thức nền đến định hướng cá nhân
             </h1>
             <p className="max-w-3xl text-base leading-8 text-foreground/78">
-              Giao diện này ưu tiên phần chat. Phiên mentor và tài nguyên phụ chỉ mở khi bạn cần, để trải nghiệm trò chuyện thoáng và dễ tập trung hơn.
+              Giao diện này ưu tiên phần chat. Bạn có thể dùng Mentor như một trợ lý tri thức trả lời thẳng câu hỏi, hoặc kéo câu hỏi về hồ sơ, thị trường và lộ trình khi thực sự cần cá nhân hóa.
             </p>
           </div>
         </div>
@@ -280,7 +277,7 @@ export default function MentorPage() {
                 {selectedThread?.title || "Mentor chat"}
               </CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
-                Hỏi rõ bối cảnh, mục tiêu và quỹ thời gian của bạn để mentor trả lời sát hơn.
+                Có thể hỏi trực tiếp kiến thức nền trước. Khi câu hỏi cần cá nhân hóa, hãy thêm bối cảnh, mục tiêu và quỹ thời gian để mentor khóa ưu tiên sát hơn.
               </p>
             </div>
 
@@ -533,7 +530,7 @@ export default function MentorPage() {
                 <div className="space-y-2">
                   <h2 className="font-display text-2xl font-semibold">Mentor đã sẵn sàng</h2>
                   <p className="max-w-2xl text-base leading-8 text-muted-foreground">
-                    Hỏi về vị trí nghề nghiệp, cơ hội phát triển, kỹ năng còn thiếu hoặc lộ trình học phù hợp với hồ sơ của bạn.
+                    Hỏi một khái niệm, cơ chế, sự khác nhau giữa hai vai trò, hoặc kéo câu hỏi về hồ sơ của bạn khi cần. Mentor sẽ ưu tiên trả lời thẳng vào điều đang được hỏi trước.
                   </p>
                 </div>
               </div>
@@ -548,7 +545,7 @@ export default function MentorPage() {
               <Textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Ví dụ: Tôi đang học ngành Tài chính, muốn theo Data Analyst thì nên học gì trước và thị trường đang yêu cầu những kỹ năng nào?"
+                placeholder="Ví dụ: Business Analyst khác Product Analyst ở điểm nào? | SQL là gì và dùng khi nào? | Theo hồ sơ hiện tại của tôi, nên ưu tiên học gì trước?"
                 className="min-h-[88px] resize-none border-primary/15 bg-background text-[15px] leading-6 shadow-none sm:min-h-[96px]"
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && event.ctrlKey) {

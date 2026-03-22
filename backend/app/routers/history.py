@@ -35,10 +35,18 @@ async def get_history(
     supabase: Client = Depends(get_supabase),
 ) -> dict[str, Any]:
     svc = SupabaseService(supabase)
-    sessions = svc.get_sessions(current_user["id"], limit, offset)
-    if session_type:
-        sessions = [item for item in sessions if item.get("session_type") == session_type]
-    return {"sessions": sessions, "total": len(sessions)}
+    payload = svc.get_sessions(
+        current_user["id"],
+        limit=limit,
+        offset=offset,
+        session_type=session_type,
+    )
+    counts = svc.get_session_counts(current_user["id"])
+    return {
+        "sessions": payload["sessions"],
+        "total": payload["total"],
+        "counts": counts,
+    }
 
 
 @router.get("/sessions/{session_id}")
@@ -50,7 +58,7 @@ async def get_session_detail(
     svc = SupabaseService(supabase)
     session = svc.get_session_detail(session_id, current_user["id"])
     if not session:
-        raise HTTPException(status_code=404, detail="Khong tim thay phien hoc.")
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên học.")
 
     quiz_questions = [_hydrate_quiz_question(q) for q in svc.get_quiz_questions(session_id)]
     return {"session": session, "quiz_questions": quiz_questions}
@@ -65,7 +73,7 @@ async def toggle_bookmark(
     svc = SupabaseService(supabase)
     session = svc.get_session_detail(session_id, current_user["id"])
     if not session:
-        raise HTTPException(status_code=404, detail="Khong tim thay phien hoc.")
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên học.")
 
     new_value = not bool(session.get("is_bookmarked", False))
     svc.db.table("learning_sessions").update({"is_bookmarked": new_value}).eq(
@@ -83,7 +91,7 @@ async def delete_session(
     svc = SupabaseService(supabase)
     session = svc.get_session_detail(session_id, current_user["id"])
     if not session:
-        raise HTTPException(status_code=404, detail="Khong tim thay phien hoc.")
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên học.")
 
     svc.db.table("learning_sessions").delete().eq("id", session_id).eq(
         "user_id", current_user["id"]

@@ -185,6 +185,56 @@ def _example_context(learner_context: Mapping[str, Any] | None) -> str:
     return "một tình huống học tập hoặc công việc cụ thể"
 
 
+def _known_topic_blueprint_override(clean_title: str) -> dict[str, str] | None:
+    canonical = strip_accents(normalize_text(clean_title)).lower()
+    canonical = re.sub(r"[^a-z0-9.+#]+", " ", canonical).strip()
+
+    if canonical in {"sql", "structured query language"}:
+        return {
+            "core_definition": (
+                f"{clean_title} là ngôn ngữ truy vấn có cấu trúc dùng để làm việc với dữ liệu trong cơ sở dữ liệu quan hệ."
+            ),
+            "scope_boundary": (
+                f"{clean_title} không phải là bản thân cơ sở dữ liệu hay hệ quản trị cơ sở dữ liệu. "
+                "Nó là ngôn ngữ để định nghĩa, truy vấn, cập nhật và kiểm soát dữ liệu."
+            ),
+            "mechanism": (
+                "Người dùng viết câu lệnh như SELECT, INSERT, UPDATE, DELETE hoặc CREATE TABLE. "
+                "Hệ quản trị cơ sở dữ liệu phân tích câu lệnh, tối ưu cách thực thi, rồi đọc hoặc ghi dữ liệu và trả kết quả."
+            ),
+            "components": (
+                "Các phần chính thường gồm nhóm lệnh truy vấn dữ liệu, nhóm lệnh thay đổi dữ liệu, "
+                "nhóm lệnh định nghĩa cấu trúc bảng và nhóm lệnh phân quyền hoặc kiểm soát giao dịch."
+            ),
+            "input_process_output": (
+                "Đầu vào là câu lệnh SQL và dữ liệu trong các bảng. Xử lý là phân tích cú pháp, lập kế hoạch thực thi và thao tác trên dữ liệu. "
+                "Đầu ra là tập kết quả, dữ liệu đã được cập nhật hoặc cấu trúc đã được thay đổi."
+            ),
+            "example": (
+                "Ví dụ: SELECT name FROM users WHERE active = true dùng để lấy tên những người dùng đang hoạt động từ bảng users."
+            ),
+            "application": (
+                "SQL được dùng để đọc báo cáo, lọc dữ liệu, cập nhật bản ghi, tạo bảng, kết nối dữ liệu cho backend, BI và hệ thống vận hành."
+            ),
+            "misconceptions": (
+                "Hiểu sai phổ biến là nghĩ SQL chỉ để đọc dữ liệu. Thực tế SQL còn dùng để tạo cấu trúc dữ liệu, cập nhật dữ liệu, "
+                "quản lý quyền và làm việc với giao dịch."
+            ),
+            "conditions_and_limits": (
+                "SQL mạnh nhất trong bối cảnh dữ liệu có cấu trúc và quan hệ rõ ràng. "
+                "Cú pháp có thể khác nhẹ giữa PostgreSQL, MySQL, SQL Server hay SQLite."
+            ),
+            "related_concepts": (
+                "Dễ nhầm SQL với database, DBMS hoặc NoSQL. Database là nơi lưu dữ liệu, DBMS là phần mềm quản lý dữ liệu, còn SQL là ngôn ngữ thao tác với dữ liệu quan hệ."
+            ),
+            "decision_value": (
+                "Hiểu đúng SQL giúp đọc dữ liệu đúng, viết truy vấn an toàn hơn và biết khi nào nên xử lý bằng truy vấn thay vì kéo toàn bộ dữ liệu sang ứng dụng."
+            ),
+        }
+
+    return None
+
+
 def build_blueprint_fallback(
     *,
     title: str,
@@ -232,6 +282,10 @@ def build_blueprint_fallback(
                 f"Hiểu đúng sự khác nhau giúp chọn đúng kỹ năng cần học, đặt câu hỏi đúng trong phỏng vấn, và phân bổ công việc hợp lý giữa {first} và {second}."
             ),
         }
+
+    known_override = _known_topic_blueprint_override(clean_title)
+    if known_override:
+        return known_override
 
     base_example = _example_context(learner_context)
     return {

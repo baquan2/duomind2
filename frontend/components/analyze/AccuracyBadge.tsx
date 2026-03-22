@@ -1,4 +1,4 @@
-import { BadgeCheck, ShieldX } from "lucide-react"
+import { BadgeCheck, BookOpenText, ShieldX } from "lucide-react"
 
 import { getAnalyzeVerdictMeta } from "@/lib/analyze-verdict"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,10 @@ const verdictConfig = {
   incorrect: {
     icon: ShieldX,
     className: "border-rose-200 bg-rose-50 text-rose-800 shadow-rose-100/50",
+  },
+  deep_dive: {
+    icon: BookOpenText,
+    className: "border-sky-200 bg-sky-50 text-sky-800 shadow-sky-100/50",
   },
 } as const
 

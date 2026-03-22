@@ -12,6 +12,11 @@ from app.services.file_parser_service import extract_text_from_upload
 from app.services.gemini_service import gemini
 from app.services.knowledge_research_service import search_knowledge_sources
 from app.services.supabase_service import SupabaseService
+from app.utils.ai_context import (
+    DEFAULT_CONTEXT_POLICY,
+    build_context_usage_trace,
+    build_shared_ai_context,
+)
 from app.utils.content_blueprint import (
     build_blueprint_fallback,
     build_key_points_from_briefs,
@@ -42,7 +47,7 @@ from app.utils.helpers import (
     strip_accents,
     truncate_content,
 )
-from app.utils.source_references import resolve_source_lookup
+from app.utils.source_references import resolve_source_lookup, split_sources_and_related_materials
 
 
 router = APIRouter()
@@ -154,6 +159,20 @@ ANALYZE_BOUNDARY_MARKERS = (
     " chi dung khi ",
     " chi co gia tri khi ",
     " khong dong nghia ",
+)
+
+ANALYZE_CRITIQUE_MARKERS = (
+    "kiem tra",
+    "kiểm tra",
+    "danh gia",
+    "đánh giá",
+    "cham",
+    "chấm",
+    "review",
+    "nhan xet",
+    "nhận xét",
+    "dung hay sai",
+    "đúng hay sai",
 )
 
 SECTION_DISPLAY_TITLES = {
@@ -327,15 +346,63 @@ def _legacy_extract_analysis_focus(content: str, analysis_goal: str) -> str:
     return stripped or "chủ đề chính trong nội dung"
 
 
-def _validate_analysis_input(content: str, analysis_goal: str | None = None) -> str:
+def _normalize_analysis_mode(mode: str | None) -> str:
+    cleaned = normalize_text(str(mode or "auto")).lower()
+    if cleaned in {"auto", "deep_dive", "critique"}:
+        return cleaned
+    return "auto"
+
+
+def _has_multiple_declarative_claims(content: str) -> bool:
+    sentences = _clean_analysis_sentences(content)
+    declarative_count = sum(
+        1
+        for sentence in sentences
+        if not sentence.endswith("?") and len(sentence.split()) >= 6
+    )
+    return declarative_count >= 3
+
+
+def _detect_analysis_mode(
+    content: str,
+    analysis_goal: str | None = None,
+    source_label: str | None = None,
+    requested_mode: str = "auto",
+) -> str:
+    normalized_mode = _normalize_analysis_mode(requested_mode)
+    if normalized_mode != "auto":
+        return normalized_mode
+
+    lowered_goal = strip_accents(normalize_text(str(analysis_goal or ""))).lower()
+    lowered_content = strip_accents(normalize_text(content)).lower()
+    if source_label:
+        return "critique"
+    if any(marker in lowered_goal or marker in lowered_content for marker in ANALYZE_CRITIQUE_MARKERS):
+        return "critique"
+    if _has_multiple_declarative_claims(content):
+        return "critique"
+    return "deep_dive"
+
+
+def _validate_analysis_input(
+    content: str,
+    analysis_goal: str | None = None,
+    mode: str = "auto",
+) -> str:
     normalized = normalize_text(content)
     has_explicit_goal = bool(_normalize_analysis_goal_override(analysis_goal))
+    analysis_mode = _normalize_analysis_mode(mode)
     if not normalized:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Nội dung phân tích đang trống. Hãy dán câu hỏi hoặc ghi chú của bạn.",
         )
-    if len(normalized) < (12 if has_explicit_goal else 20):
+    min_length = 12 if has_explicit_goal else 20
+    min_words = 3 if has_explicit_goal else 4
+    if analysis_mode == "deep_dive":
+        min_length = 8 if has_explicit_goal else 12
+        min_words = 2 if has_explicit_goal else 3
+    if len(normalized) < min_length:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -343,7 +410,7 @@ def _validate_analysis_input(content: str, analysis_goal: str | None = None) -> 
                 "mà bạn muốn AI kiểm tra."
             ),
         )
-    if len(normalized.split()) < (3 if has_explicit_goal else 4):
+    if len(normalized.split()) < min_words:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Nội dung chưa đủ rõ. Hãy nêu rõ mục tiêu phân tích hoặc dán đoạn ghi chú cụ thể hơn.",
@@ -596,11 +663,17 @@ def _normalize_analysis_plan(
     }
 
 
-def _should_use_llm_analysis_plan(analysis_goal: str, analysis_content: str) -> bool:
+def _should_use_llm_analysis_plan(
+    analysis_goal: str,
+    analysis_content: str,
+    analysis_mode: str = "critique",
+) -> bool:
     analysis_kind = _detect_analysis_kind(analysis_goal)
     question_length = len(normalize_text(analysis_goal).split())
     content_length = len(normalize_text(analysis_content).split())
-    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and question_length <= 22 and content_length <= 220:
+    if analysis_mode == "deep_dive":
+        return question_length >= 3 or content_length >= 24
+    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and question_length <= 6 and content_length <= 60:
         return False
     return True
 
@@ -609,9 +682,10 @@ async def _build_analysis_plan(
     analysis_goal: str,
     focus_topic: str,
     analysis_content: str,
+    analysis_mode: str = "critique",
 ) -> dict[str, Any]:
     fallback = _heuristic_analysis_plan(analysis_goal, focus_topic, analysis_content)
-    if not _should_use_llm_analysis_plan(analysis_goal, analysis_content):
+    if not _should_use_llm_analysis_plan(analysis_goal, analysis_content, analysis_mode):
         return fallback
     try:
         raw_plan = await gemini.generate_json(
@@ -619,6 +693,7 @@ async def _build_analysis_plan(
                 analysis_goal=analysis_goal,
                 focus_topic=focus_topic,
                 content=analysis_content,
+                analysis_mode=analysis_mode,
             )
         )
     except Exception as exc:
@@ -627,10 +702,16 @@ async def _build_analysis_plan(
     return _normalize_analysis_plan(raw_plan, analysis_goal, focus_topic, analysis_content)
 
 
-def _should_generate_analysis_blueprint(analysis_plan: dict[str, Any], analysis_content: str) -> bool:
+def _should_generate_analysis_blueprint(
+    analysis_plan: dict[str, Any],
+    analysis_content: str,
+    analysis_mode: str = "critique",
+) -> bool:
     analysis_kind = normalize_text(str(analysis_plan.get("analysis_kind") or "")).lower()
     content_length = len(normalize_text(analysis_content).split())
-    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and content_length <= 220:
+    if analysis_mode == "deep_dive":
+        return content_length >= 6
+    if analysis_kind in {"definition", "comparison", "mechanism", "structure"} and content_length <= 40:
         return False
     return True
 
@@ -701,7 +782,6 @@ def _prefer_compact_analysis_title(current_title: str, analysis_content: str) ->
 
     candidates = [normalized]
     sentences = _clean_analysis_sentences(analysis_content)
-    topic = _prefer_compact_analysis_title(topic, analysis_content) or topic
     if sentences:
         candidates.append(sentences[0])
     candidates.append(analysis_content)
@@ -913,8 +993,17 @@ def _build_compare_fallback(
     learner_context: dict[str, str],
 ) -> dict[str, Any]:
     subject_a, subject_b = _parse_compare_subjects(analysis_goal) or (focus_topic, "khái niệm còn lại")
-    sentences = _clean_analysis_sentences(analysis_content)
-    evidence_line = normalize_text(sentences[0]) if sentences else ""
+    fallback_knowledge = _build_analysis_knowledge_fallback(
+        analysis_goal,
+        focus_topic,
+        learner_context,
+    )
+    content_blueprint = fallback_knowledge.get("content_blueprint") or {}
+    core_definition = normalize_text(str(content_blueprint.get("core_definition") or ""))
+    scope_boundary = normalize_text(str(content_blueprint.get("scope_boundary") or ""))
+    mechanism = normalize_text(str(content_blueprint.get("mechanism") or ""))
+    misconception = normalize_text(str(content_blueprint.get("misconceptions") or ""))
+    application = normalize_text(str(content_blueprint.get("application") or ""))
     extra_line = normalize_text(sentences[1]) if len(sentences) > 1 else ""
 
     summary_bullets = [
@@ -958,9 +1047,16 @@ def _build_definition_fallback(
     focus_topic: str,
     learner_context: dict[str, str],
 ) -> dict[str, Any]:
+    return _build_definition_fallback_v2(
+        analysis_content,
+        analysis_goal,
+        focus_topic,
+        learner_context,
+    )
+
     topic = normalize_topic_phrase(focus_topic or analysis_goal) or "khái niệm chính"
     sentences = _clean_analysis_sentences(analysis_content)
-    evidence_line = normalize_text(sentences[0]) if sentences else ""
+    
     summary_bullets = [
         f"Câu hỏi đang cần một định nghĩa rõ cho {topic}, sau đó mới đến phạm vi áp dụng và ví dụ.",
         f"Ghi chú hiện tại nêu: {evidence_line}" if evidence_line else f"Ghi chú hiện tại chưa đủ để khẳng định định nghĩa của {topic}.",
@@ -986,6 +1082,52 @@ def _build_definition_fallback(
             focus_topic,
             learner_context,
         ),
+        "topic_tags": normalize_topic_tags([topic], topic),
+        "enrichment": "",
+    }
+
+
+def _build_definition_fallback_v2(
+    analysis_content: str,
+    analysis_goal: str,
+    focus_topic: str,
+    learner_context: dict[str, str],
+) -> dict[str, Any]:
+    topic = normalize_topic_phrase(focus_topic or analysis_goal) or "khai niem chinh"
+    fallback_knowledge = _build_analysis_knowledge_fallback(
+        analysis_goal,
+        focus_topic,
+        learner_context,
+    )
+    content_blueprint = fallback_knowledge.get("content_blueprint") or {}
+    core_definition = normalize_text(str(content_blueprint.get("core_definition") or ""))
+    scope_boundary = normalize_text(str(content_blueprint.get("scope_boundary") or ""))
+    mechanism = normalize_text(str(content_blueprint.get("mechanism") or ""))
+    misconception = normalize_text(str(content_blueprint.get("misconceptions") or ""))
+    application = normalize_text(str(content_blueprint.get("application") or ""))
+
+    summary_bullets = [
+        core_definition or f"{topic} can duoc tra loi bang dinh nghia ngan, truc tiep va dung pham vi ap dung.",
+        scope_boundary or f"Diem quan trong la tach {topic} khoi cac khai niem gan giong hoac cach hieu qua rong.",
+        mechanism or f"Khi giai thich {topic}, can neu ro co che hoac logic van hanh thay vi chi lap lai ten goi.",
+        misconception or application or "Neu thieu vi du, gioi han ap dung hoac ngu canh su dung thi muc kiem chung chi nen dung o unverifiable.",
+    ]
+    key_points = [
+        core_definition or f"{topic} phai duoc mo dau bang dinh nghia truc tiep.",
+        mechanism or "Can neu ro dau vao, cach xu ly va dau ra hoac logic van hanh cot loi.",
+        scope_boundary or "Khong nen keo cau tra loi thanh tong quan rong cua ca linh vuc lien quan.",
+        misconception or application or "Nen chi ra mot nham lan pho bien hoac mot boi canh ap dung thuc te.",
+    ]
+
+    return {
+        "title": topic,
+        "accuracy_score": None,
+        "accuracy_assessment": "unverifiable",
+        "accuracy_reasoning": "Noi dung hien tai chua du bang chung de xac nhan day du dinh nghia va pham vi ap dung.",
+        "summary": "\n".join(f"- {normalize_text(item)}" for item in summary_bullets[:4]),
+        "key_points": [normalize_text(item) for item in key_points[:5]],
+        "corrections": [],
+        "knowledge_detail_data": fallback_knowledge,
         "topic_tags": normalize_topic_tags([topic], topic),
         "enrichment": "",
     }
@@ -1030,7 +1172,7 @@ def _build_analysis_fallback(
     if kind == "comparison":
         return _build_compare_fallback(analysis_content, analysis_goal, focus_topic, learner_context)
     if kind in {"definition", "mechanism", "structure"}:
-        return _build_definition_fallback(analysis_content, analysis_goal, focus_topic, learner_context)
+        return _build_definition_fallback_v2(analysis_content, analysis_goal, focus_topic, learner_context)
     return _build_review_fallback(analysis_content, analysis_goal, focus_topic, learner_context)
 
 
@@ -1300,8 +1442,8 @@ def _build_analysis_session_input_legacy(
     stored_content = content
     if normalized_goal:
         stored_content = (
-            f"CÃ¢u há»i cáº§n phÃ¢n tÃ­ch: {normalized_goal}\n"
-            f"Ná»™i dung: {content}"
+            f"Câu hỏi cần phân tích: {normalized_goal}\n"
+            f"Nội dung: {content}"
         )
     return build_stored_user_input(stored_content, source_label)
 
@@ -1311,14 +1453,8 @@ def _build_analysis_session_input(
     source_label: str | None = None,
     analysis_goal: str | None = None,
 ) -> str:
-    normalized_goal = _normalize_analysis_goal_override(analysis_goal)
-    stored_content = content
-    if normalized_goal:
-        stored_content = (
-            f"Cau hoi can phan tich: {normalized_goal}\n"
-            f"Noi dung: {content}"
-        )
-    return build_stored_user_input(stored_content, source_label)
+    _ = analysis_goal
+    return build_stored_user_input(content, source_label)
 
 
 def _apply_source_confidence(
@@ -1386,18 +1522,21 @@ async def _legacy_run_analysis(
 ) -> AnalyzeResult:
     svc = SupabaseService(supabase)
     start_time = perf_counter()
-    svc.ensure_profile(
+    profile = svc.ensure_profile(
         current_user["id"],
         email=current_user.get("email"),
         full_name=current_user.get("full_name"),
         avatar_url=current_user.get("avatar_url"),
     )
+    onboarding = svc.get_onboarding(current_user["id"])
+    recent_sessions = svc.get_recent_learning_context(current_user["id"], limit=5)
+    context_bundle = build_shared_ai_context(
+        profile=profile,
+        onboarding=onboarding,
+        recent_sessions=recent_sessions,
+    )
 
-    try:
-        onboarding = svc.get_onboarding(current_user["id"])
-    except Exception:
-        onboarding = None
-    learner_context = build_prompt_learning_context(get_user_context(onboarding))
+    learner_context: dict[str, Any] = dict(context_bundle["learner_context"])
 
     normalized_analysis_goal = _normalize_analysis_goal_override(analysis_goal)
     truncated_content = truncate_content(content)
@@ -1406,7 +1545,7 @@ async def _legacy_run_analysis(
     analysis_goal = _extract_analysis_goal(truncated_content, normalized_analysis_goal)
     focus_topic = _extract_analysis_focus(truncated_content, analysis_goal)
     analysis_content = _strip_analysis_metadata(truncated_content)
-    analysis_plan = await _build_analysis_plan(analysis_goal, focus_topic, analysis_content)
+    analysis_plan = await _build_analysis_plan(analysis_goal, focus_topic, analysis_content, effective_mode)
     analysis_goal = normalize_text(str(analysis_plan.get("main_question") or analysis_goal))
     focus_topic = normalize_topic_phrase(str(analysis_plan.get("focus_topic") or focus_topic)) or focus_topic
     normalized_title = _prefer_compact_analysis_title(
@@ -1414,6 +1553,7 @@ async def _legacy_run_analysis(
         analysis_content,
     )
     analysis_brief = _build_analysis_brief(analysis_goal, focus_topic, analysis_content)
+    analysis_brief["analysis_mode"] = effective_mode
     analysis_brief["plan"] = analysis_plan
     source_task = asyncio.create_task(
         search_knowledge_sources(
@@ -1430,7 +1570,7 @@ async def _legacy_run_analysis(
         verified_sources,
     )
     fallback_result = _build_analysis_fallback(analysis_content, focus_topic, analysis_goal, learner_context)
-    if _should_generate_analysis_blueprint(analysis_plan, analysis_content):
+    if _should_generate_analysis_blueprint(analysis_plan, analysis_content, effective_mode):
         try:
             raw_blueprint = await gemini.generate_json(
                 build_analyze_blueprint_prompt(
@@ -1438,6 +1578,7 @@ async def _legacy_run_analysis(
                     language=language,
                     analysis_goal=analysis_goal,
                     focus_topic=focus_topic,
+                    analysis_mode=effective_mode,
                     analysis_brief=analysis_brief,
                     source_brief=source_brief,
                 )
@@ -1470,6 +1611,7 @@ async def _legacy_run_analysis(
                 language=language,
                 analysis_goal=analysis_goal,
                 focus_topic=focus_topic,
+                analysis_mode=effective_mode,
                 learner_context=learner_context,
                 analysis_brief=analysis_brief,
                 source_brief=source_brief,
@@ -1501,7 +1643,7 @@ async def _legacy_run_analysis(
     accuracy_assessment, accuracy_score = _apply_source_confidence(
         accuracy_assessment,
         accuracy_score,
-        verified_sources,
+        evidence_sources,
     )
 
     fallback_summary = str(fallback_result["summary"])
@@ -1521,14 +1663,20 @@ async def _legacy_run_analysis(
     )
     corrections = _normalize_corrections(ai_result.get("corrections"))
     topic_tags = normalize_topic_tags(ai_result.get("topic_tags"), title or focus_topic or content)
-    verdict = _build_analysis_verdict(accuracy_assessment, corrections, verified_sources)
+    verdict = _build_analysis_verdict(accuracy_assessment, corrections, evidence_sources)
+    if effective_mode == "deep_dive":
+        corrections = []
+        accuracy_assessment = "unverifiable"
+        accuracy_score = None
+        verdict = "deep_dive"
+    knowledge_detail_data["analysis_mode"] = effective_mode
     effective_source_label = source_label or "Nội dung nhập tay"
 
     mindmap_points = list(_build_analysis_key_points_from_sections(knowledge_detail_data) or key_points)
     for correction in corrections[:2]:
         if correction.correction:
-            mindmap_points.append(f"ÄÃ­nh chÃ­nh: {correction.correction}")
-    mindmap_points = [point.replace("Ã„ÂÃƒÂ­nh chÃƒÂ­nh:", "Dinh chinh:") for point in mindmap_points]
+            mindmap_points.append(f"Đính chính: {correction.correction}")
+    mindmap_points = [point.replace("Đính chính:", "Dinh chinh:") for point in mindmap_points]
     clean_mindmap_points = list(_build_analysis_key_points_from_sections(knowledge_detail_data) or key_points)
     for correction in corrections[:2]:
         if correction.correction:
@@ -1545,6 +1693,7 @@ async def _legacy_run_analysis(
         current_user["id"],
         {
             "session_type": "analyze",
+            "session_subtype": effective_mode,
             "title": title,
             "user_input": _build_analysis_session_input(content, source_label, analysis_goal),
             "topic_tags": topic_tags,
@@ -1558,16 +1707,16 @@ async def _legacy_run_analysis(
             "sources": verified_sources,
             "language": language,
             "duration_ms": int((perf_counter() - start_time) * 1000),
+            "request_payload": request_payload,
+            "context_snapshot": context_snapshot,
+            "generation_trace": generation_trace,
         },
     )
-    if not session or not session.get("id"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể lưu phiên phân tích.",
-        )
+    session_id = session.get("id") if isinstance(session, dict) else None
+    save_metadata = session.get("_save_metadata") if isinstance(session, dict) else None
 
     return AnalyzeResult(
-        session_id=session["id"],
+        session_id=session_id,
         title=title,
         verdict=verdict,
         accuracy_score=accuracy_score,
@@ -1579,8 +1728,10 @@ async def _legacy_run_analysis(
         topic_tags=topic_tags,
         mindmap_data=mindmap_data,
         sources=verified_sources,
+        related_materials=[],
         source_label=effective_source_label,
         input_preview=build_input_preview(content),
+        save_metadata=save_metadata,
     )
 
 
@@ -2077,6 +2228,7 @@ async def _rewrite_analysis_result(
     language: str,
     analysis_goal: str,
     focus_topic: str,
+    analysis_mode: str,
     learner_context: dict[str, str],
     analysis_brief: dict[str, Any],
     source_brief: dict[str, Any],
@@ -2090,6 +2242,7 @@ async def _rewrite_analysis_result(
                 language=language,
                 analysis_goal=analysis_goal,
                 focus_topic=focus_topic,
+                analysis_mode=analysis_mode,
                 learner_context=learner_context,
                 analysis_brief=analysis_brief,
                 source_brief=source_brief,
@@ -2111,30 +2264,41 @@ async def _run_analysis(
     supabase: Client,
     source_label: str | None = None,
     analysis_goal: str | None = None,
+    mode: str = "auto",
 ) -> AnalyzeResult:
     svc = SupabaseService(supabase)
     start_time = perf_counter()
-    svc.ensure_profile(
+    profile = svc.ensure_profile(
         current_user["id"],
         email=current_user.get("email"),
         full_name=current_user.get("full_name"),
         avatar_url=current_user.get("avatar_url"),
     )
+    onboarding = svc.get_onboarding(current_user["id"])
+    recent_sessions = svc.get_recent_learning_context(current_user["id"], limit=5)
+    context_bundle = build_shared_ai_context(
+        profile=profile,
+        onboarding=onboarding,
+        recent_sessions=recent_sessions,
+    )
 
-    try:
-        onboarding = svc.get_onboarding(current_user["id"])
-    except Exception:
-        onboarding = None
-    learner_context = build_prompt_learning_context(get_user_context(onboarding))
+    learner_context: dict[str, Any] = dict(context_bundle["learner_context"])
 
     normalized_analysis_goal = _normalize_analysis_goal_override(analysis_goal)
+    requested_mode = _normalize_analysis_mode(mode)
     truncated_content = truncate_content(content)
-    _validate_analysis_input(truncated_content, normalized_analysis_goal)
+    effective_mode = _detect_analysis_mode(
+        truncated_content,
+        normalized_analysis_goal,
+        source_label,
+        requested_mode,
+    )
+    _validate_analysis_input(truncated_content, normalized_analysis_goal, effective_mode)
 
     analysis_goal = _extract_analysis_goal(truncated_content, normalized_analysis_goal)
     focus_topic = _extract_analysis_focus(truncated_content, analysis_goal)
     analysis_content = _strip_analysis_metadata(truncated_content)
-    analysis_plan = await _build_analysis_plan(analysis_goal, focus_topic, analysis_content)
+    analysis_plan = await _build_analysis_plan(analysis_goal, focus_topic, analysis_content, effective_mode)
     analysis_goal = normalize_text(str(analysis_plan.get("main_question") or analysis_goal))
     focus_topic = normalize_topic_phrase(str(analysis_plan.get("focus_topic") or focus_topic)) or focus_topic
     normalized_title = _prefer_compact_analysis_title(
@@ -2142,6 +2306,7 @@ async def _run_analysis(
         analysis_content,
     )
     analysis_brief = _build_analysis_brief(analysis_goal, focus_topic, analysis_content)
+    analysis_brief["analysis_mode"] = effective_mode
     analysis_brief["plan"] = analysis_plan
 
     verified_sources: list[dict[str, str]] = []
@@ -2155,14 +2320,16 @@ async def _run_analysis(
                     for item in analysis_plan.get("evidence_targets", [])
                     if str(item).strip()
                 ],
+                limit=7,
             )
         )
         verified_sources = await resolve_source_lookup(source_task, flow_label="analyze")
+    evidence_sources, related_materials = split_sources_and_related_materials(verified_sources)
     source_brief = _build_analysis_source_brief(
         analysis_goal,
         focus_topic,
         analysis_plan,
-        verified_sources,
+        evidence_sources,
     )
     fallback_result = _build_analysis_fallback(
         analysis_content,
@@ -2187,7 +2354,7 @@ async def _run_analysis(
     )
     fallback_result["knowledge_detail_data"] = fallback_knowledge_detail
 
-    if _should_generate_analysis_blueprint(analysis_plan, analysis_content):
+    if _should_generate_analysis_blueprint(analysis_plan, analysis_content, effective_mode):
         try:
             raw_blueprint = await gemini.generate_json(
                 build_analyze_blueprint_prompt(
@@ -2195,6 +2362,7 @@ async def _run_analysis(
                     language=language,
                     analysis_goal=analysis_goal,
                     focus_topic=focus_topic,
+                    analysis_mode=effective_mode,
                     analysis_brief=analysis_brief,
                     source_brief=source_brief,
                 )
@@ -2227,6 +2395,7 @@ async def _run_analysis(
                 language=language,
                 analysis_goal=analysis_goal,
                 focus_topic=focus_topic,
+                analysis_mode=effective_mode,
                 learner_context=learner_context,
                 analysis_brief=analysis_brief,
                 source_brief=source_brief,
@@ -2251,6 +2420,7 @@ async def _run_analysis(
             language=language,
             analysis_goal=analysis_goal,
             focus_topic=focus_topic,
+            analysis_mode=effective_mode,
             learner_context=learner_context,
             analysis_brief=analysis_brief,
             source_brief=source_brief,
@@ -2260,14 +2430,15 @@ async def _run_analysis(
         if repaired_result:
             ai_result = repaired_result
 
-    if _analysis_result_needs_rewrite(
+    fallback_used = _analysis_result_needs_rewrite(
         analysis_goal,
         focus_topic,
         ai_result if isinstance(ai_result, dict) else {},
     ) or _violates_analysis_plan(
         ai_result if isinstance(ai_result, dict) else {},
         analysis_plan,
-    ):
+    )
+    if fallback_used:
         ai_result = _merge_analysis_result(ai_result, fallback_result)
 
     title = _prefer_compact_analysis_title(
@@ -2334,6 +2505,12 @@ async def _run_analysis(
     effective_source_label = source_label or "Nội dung nhập tay"
 
     verdict = _build_analysis_verdict(accuracy_assessment, corrections, verified_sources)
+    if effective_mode == "deep_dive":
+        corrections = []
+        accuracy_assessment = "unverifiable"
+        accuracy_score = None
+        verdict = "deep_dive"
+    knowledge_detail_data["analysis_mode"] = effective_mode
     mindmap_data = build_basic_mindmap(
         title,
         _build_analysis_mindmap_points(
@@ -2343,10 +2520,61 @@ async def _run_analysis(
         ),
     )
 
+    context_usage = build_context_usage_trace(
+        learner_context=learner_context,
+        rendered_texts=[
+            summary,
+            " ".join(key_points),
+            str(
+                ((knowledge_detail_data.get("detailed_sections") or {}).get("persona_based_example") or {}).get(
+                    "content"
+                )
+                or ""
+            ),
+        ],
+    )
+    request_payload = {
+        "content": content,
+        "analysis_goal": analysis_goal,
+        "mode": requested_mode,
+        "resolved_mode": effective_mode,
+        "source_label": source_label,
+        "context_policy": DEFAULT_CONTEXT_POLICY,
+        "related_materials": related_materials,
+    }
+    context_snapshot = {
+        "learner_context": learner_context,
+        "profile_digest": context_bundle["profile_digest"],
+        "context_policy": DEFAULT_CONTEXT_POLICY,
+        "focus_topic": focus_topic,
+        "analysis_plan": analysis_plan,
+        "analysis_brief": analysis_brief,
+    }
+    generation_trace = {
+        "analysis_mode": effective_mode,
+        "question_type": analysis_plan.get("analysis_kind"),
+        "focus_topic": focus_topic,
+        "learner_context_digest": learner_context,
+        "context_usage": context_usage,
+        "context_policy": DEFAULT_CONTEXT_POLICY,
+        "source_lookup_plan": {
+            "should_lookup": _should_lookup_analysis_sources(analysis_plan, analysis_goal, analysis_content),
+            "source_count": len(verified_sources),
+            "source_label": effective_source_label,
+        },
+        "chosen_sources": evidence_sources,
+        "related_materials": related_materials,
+        "rewrite_used": bool(needs_rewrite),
+        "fallback_used": bool(fallback_used),
+        "model_name": getattr(gemini, "_configured_model_name", None) or "gemini-2.5-flash",
+        "latency_ms": int((perf_counter() - start_time) * 1000),
+    }
+
     session = svc.create_session(
         current_user["id"],
         {
             "session_type": "analyze",
+            "session_subtype": effective_mode,
             "title": title,
             "user_input": _build_analysis_session_input(content, source_label, analysis_goal),
             "topic_tags": topic_tags,
@@ -2357,19 +2585,19 @@ async def _run_analysis(
             "corrections": [item.model_dump() for item in corrections],
             "infographic_data": knowledge_detail_data,
             "mindmap_data": mindmap_data,
-            "sources": verified_sources,
+            "sources": evidence_sources,
             "language": language,
             "duration_ms": int((perf_counter() - start_time) * 1000),
+            "request_payload": request_payload,
+            "context_snapshot": context_snapshot,
+            "generation_trace": generation_trace,
         },
     )
-    if not session or not session.get("id"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="KhÃ´ng thá»ƒ lÆ°u phiÃªn phÃ¢n tÃ­ch.",
-        )
+    session_id = session.get("id") if isinstance(session, dict) else None
+    save_metadata = session.get("_save_metadata") if isinstance(session, dict) else None
 
     return AnalyzeResult(
-        session_id=session["id"],
+        session_id=session_id,
         title=title,
         verdict=verdict,
         accuracy_score=accuracy_score,
@@ -2380,9 +2608,11 @@ async def _run_analysis(
         knowledge_detail_data=knowledge_detail_data,
         topic_tags=topic_tags,
         mindmap_data=mindmap_data,
-        sources=verified_sources,
+        sources=evidence_sources,
+        related_materials=related_materials,
         source_label=effective_source_label,
         input_preview=build_input_preview(content),
+        save_metadata=save_metadata,
     )
 
 
@@ -2398,6 +2628,7 @@ async def analyze_content(
         current_user=current_user,
         supabase=supabase,
         analysis_goal=request.analysis_goal,
+        mode=request.mode,
     )
 
 
@@ -2406,6 +2637,7 @@ async def analyze_uploaded_file(
     file: UploadFile = File(...),
     language: str = Form("vi"),
     analysis_goal: str | None = Form(None),
+    mode: str = Form("auto"),
     current_user: dict[str, str | None] = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
 ) -> AnalyzeResult:
@@ -2418,6 +2650,7 @@ async def analyze_uploaded_file(
         supabase=supabase,
         source_label=filename,
         analysis_goal=analysis_goal,
+        mode=mode,
     )
 
 

@@ -54,10 +54,17 @@ export interface SourceReference {
   snippet?: string | null
 }
 
-export type AnalyzeVerdict = "correct" | "incorrect"
+export interface SaveMetadata {
+  status: string
+  dropped_fields?: string[]
+  attempted_optional_fields?: string[]
+  reason?: string | null
+}
+
+export type AnalyzeVerdict = "correct" | "incorrect" | "deep_dive"
 
 export interface AnalyzeResult {
-  session_id: string
+  session_id?: string | null
   title: string
   verdict: AnalyzeVerdict
   accuracy_score: number | null
@@ -69,8 +76,10 @@ export interface AnalyzeResult {
   topic_tags: string[]
   mindmap_data: MindMapData
   sources: SourceReference[]
+  related_materials: SourceReference[]
   source_label?: string | null
   input_preview?: string | null
+  save_metadata?: SaveMetadata | null
 }
 
 export interface InfographicSection {
@@ -150,7 +159,7 @@ export interface KnowledgeDetailData {
 }
 
 export interface ExploreResult {
-  session_id: string
+  session_id?: string | null
   title: string
   summary: string
   key_points: string[]
@@ -158,6 +167,8 @@ export interface ExploreResult {
   topic_tags: string[]
   mindmap_data: MindMapData
   sources: SourceReference[]
+  related_materials: SourceReference[]
+  save_metadata?: SaveMetadata | null
 }
 
 export type MentorIntent =
@@ -224,6 +235,12 @@ export interface MentorMessagePayload {
   recommended_learning_steps: string[]
   suggested_followups: string[]
   sources: MentorSource[]
+  related_materials?: MentorSource[]
+  answer_mode?: string | null
+  request_payload?: Record<string, unknown> | null
+  context_snapshot?: Record<string, unknown> | null
+  generation_trace?: Record<string, unknown> | null
+  save_metadata?: SaveMetadata | null
 }
 
 export interface MentorThreadSummary {
@@ -241,8 +258,13 @@ export interface MentorMessageItem {
   role: "user" | "assistant" | "system"
   intent?: MentorIntent | string | null
   content: string
+  answer_mode?: string | null
   response_data?: MentorMessagePayload | null
   sources: MentorSource[]
+  related_materials?: MentorSource[]
+  request_payload?: Record<string, unknown> | null
+  context_snapshot?: Record<string, unknown> | null
+  generation_trace?: Record<string, unknown> | null
   created_at?: string | null
 }
 
@@ -283,6 +305,7 @@ export interface MindMapData {
 export interface LearningSession {
   id: string
   session_type: "analyze" | "explore"
+  session_subtype?: "overview" | "deep_dive" | "critique" | null
   title: string
   user_input?: string
   summary?: string
@@ -295,6 +318,9 @@ export interface LearningSession {
   infographic_data?: KnowledgeDetailData | null
   mindmap_data?: MindMapData | null
   sources?: SourceReference[]
+  request_payload?: Record<string, unknown> | null
+  context_snapshot?: Record<string, unknown> | null
+  generation_trace?: Record<string, unknown> | null
   language?: string
   created_at: string
   is_bookmarked: boolean
@@ -344,6 +370,16 @@ export interface OpenFeedbackResult {
 export interface SessionDetailResponse {
   session: LearningSession
   quiz_questions: QuizQuestion[]
+}
+
+export interface SessionListResponse {
+  sessions: LearningSession[]
+  total: number
+  counts: {
+    all: number
+    analyze: number
+    explore: number
+  }
 }
 
 export interface KnowledgeReport {

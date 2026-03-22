@@ -1,4 +1,5 @@
 import re
+import re
 from typing import Any
 
 from app.models.mentor import MentorIntent
@@ -13,7 +14,20 @@ INTENT_PATTERNS: list[tuple[MentorIntent, tuple[str, ...]]] = [
     ),
     (
         "skill_gap",
-        ("thieu ky nang", "thieu gi", "ky nang can", "kien thuc nao toi can co", "can co gi", "gap", "hong ky nang"),
+        (
+            "thieu ky nang",
+            "thieu ky nang nao",
+            "thieu nhung ky nang nao",
+            "dang thieu ky nang nao",
+            "dang thieu nhung ky nang nao",
+            "ky nang nao quan trong nhat",
+            "ky nang nao can nhat",
+            "ky nang can",
+            "kien thuc nao toi can co",
+            "can co gi",
+            "gap",
+            "hong ky nang",
+        ),
     ),
     (
         "learning_roadmap",
@@ -139,6 +153,8 @@ KNOWLEDGE_QUESTION_MARKERS = (
 )
 
 PERSONAL_GUIDANCE_MARKERS = (
+    "voi muc tieu",
+    "muc tieu hien tai",
     "toi nen",
     "minh nen",
     "em nen",
@@ -423,8 +439,22 @@ def detect_mentor_intent(message: str) -> MentorIntent:
         scores["learning_roadmap"] += 2
     if "thi truong" in text or "tuyen dung" in text or "jd" in text:
         scores["market_outlook"] += 2
-    if "thieu ky nang" in text or "skill gap" in text:
+    if (
+        "thieu ky nang" in text
+        or "skill gap" in text
+        or "ky nang nao quan trong nhat" in text
+        or "ky nang nao can nhat" in text
+    ):
         scores["skill_gap"] += 2
+    if any(marker in text for marker in ("voi muc tieu", "muc tieu cua toi", "muc tieu cua minh", "muc tieu cua em")):
+        if any(marker in text for marker in ("ky nang", "skill", "gap")):
+            scores["skill_gap"] += 2
+        if any(marker in text for marker in ("lo trinh", "roadmap", "hoc gi truoc", "bat dau tu dau", "hoc theo buoc")):
+            scores["learning_roadmap"] += 2
+        if any(marker in text for marker in ("thi truong", "jd", "tuyen dung", "thu nhap", "co hoi")):
+            scores["market_outlook"] += 2
+        if any(marker in text for marker in ("phu hop", "hop voi toi", "nen theo huong nao", "nen chon huong nao")):
+            scores["career_fit"] += 2
     if any(marker in text for marker in PERSONAL_GUIDANCE_MARKERS):
         scores["general_guidance"] -= 1
 
@@ -434,10 +464,36 @@ def detect_mentor_intent(message: str) -> MentorIntent:
     return "general_guidance"
 
 
+def _extract_guidance_focus_topic(message: str) -> str:
+    normalized = normalize_text(message).strip(" ?")
+    lowered = strip_accents(normalized).lower()
+    patterns = (
+        r"\bvoi muc tieu\s+(.+?)(?:,|\s+(?:toi|minh|em)\b|$)",
+        r"\bmuc tieu(?: cua (?:toi|minh|em))?\s+la\s+(.+?)(?:,|\s+(?:toi|minh|em)\b|$)",
+        r"\bhuong\s+(.+?)(?:\s+khong\b|$)",
+        r"\blo trinh hoc\s+(.+?)(?:\s+tu dau\b|$)",
+        r"\bcho\s+(.+?)(?:\s+hien tai\b|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, lowered, flags=re.IGNORECASE)
+        if not match:
+            continue
+        candidate = normalize_text(normalized[match.start(1):match.end(1)]).strip(" ,.?")
+        candidate = re.sub(r"\b(?:toi|minh|em)\b.*$", "", candidate, flags=re.IGNORECASE).strip(" ,.?")
+        candidate = build_core_title(candidate, candidate)
+        if candidate and 0 < len(candidate.split()) <= 6:
+            return candidate
+    return ""
+
+
 def mentor_focus_topic(message: str) -> str:
     compare_subjects = mentor_compare_subjects(message)
     if compare_subjects:
         return normalize_text(f"{compare_subjects[0]} va {compare_subjects[1]}")
+
+    guidance_topic = _extract_guidance_focus_topic(message)
+    if guidance_topic:
+        return guidance_topic
 
     normalized_topic = normalize_topic_phrase(message) or normalize_text(message).strip(" ?")
     compact = build_core_title(normalized_topic, "")
@@ -445,10 +501,8 @@ def mentor_focus_topic(message: str) -> str:
 
 
 def should_use_profile_context(intent: MentorIntent, message: str) -> bool:
-    if intent != "general_guidance":
-        return True
-    lowered = strip_accents(normalize_text(message)).lower()
-    return any(marker in lowered for marker in PERSONAL_GUIDANCE_MARKERS)
+    _ = (intent, message)
+    return True
 
 
 def should_use_market_context(intent: MentorIntent) -> bool:

@@ -1,8 +1,11 @@
 -- DUO MIND Supabase schema
 -- Source of truth: docs/02-database-schema.md
 -- Use this file for a fresh database bootstrap.
--- Do not rerun the whole file on a database that already has tables.
--- For partial recovery/repair, use dedicated files in /supabase (for example restore_profiles_table).
+-- This file is now guarded so it is safer to rerun on a partially initialized database,
+-- but it still does not backfill missing columns on already-existing tables.
+-- For partial recovery/repair on an inconsistent database, prefer the dedicated files in /supabase.
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Block 1: profiles
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -55,7 +58,7 @@ CREATE TRIGGER profiles_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 -- Block 2: user_onboarding
-CREATE TABLE public.user_onboarding (
+CREATE TABLE IF NOT EXISTS public.user_onboarding (
     id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id       UUID REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE NOT NULL,
     age_range     TEXT CHECK (age_range IN ('under_18','18_24','25_34','35_44','45_plus')),
@@ -82,15 +85,17 @@ CREATE TABLE public.user_onboarding (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS user_onboarding_updated_at ON public.user_onboarding;
 CREATE TRIGGER user_onboarding_updated_at
     BEFORE UPDATE ON public.user_onboarding
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 -- Block 3: learning_sessions
-CREATE TABLE public.learning_sessions (
+CREATE TABLE IF NOT EXISTS public.learning_sessions (
     id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id      UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     session_type TEXT CHECK (session_type IN ('analyze','explore')) NOT NULL,
+    session_subtype TEXT CHECK (session_subtype IN ('overview','deep_dive','critique')),
     title        TEXT NOT NULL,
     topic_tags   TEXT[] DEFAULT '{}',
     user_input   TEXT NOT NULL,
@@ -102,6 +107,9 @@ CREATE TABLE public.learning_sessions (
     infographic_data    JSONB,
     mindmap_data        JSONB,
     sources             JSONB DEFAULT '[]',
+    request_payload     JSONB DEFAULT '{}'::jsonb,
+    context_snapshot    JSONB DEFAULT '{}'::jsonb,
+    generation_trace    JSONB DEFAULT '{}'::jsonb,
     language    TEXT DEFAULT 'vi',
     duration_ms INTEGER,
     is_bookmarked BOOLEAN DEFAULT FALSE,
@@ -109,17 +117,18 @@ CREATE TABLE public.learning_sessions (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS learning_sessions_updated_at ON public.learning_sessions;
 CREATE TRIGGER learning_sessions_updated_at
     BEFORE UPDATE ON public.learning_sessions
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE INDEX idx_sessions_user_id ON public.learning_sessions(user_id);
-CREATE INDEX idx_sessions_type ON public.learning_sessions(session_type);
-CREATE INDEX idx_sessions_created ON public.learning_sessions(created_at DESC);
-CREATE INDEX idx_sessions_tags ON public.learning_sessions USING gin(topic_tags);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON public.learning_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_type ON public.learning_sessions(session_type);
+CREATE INDEX IF NOT EXISTS idx_sessions_created ON public.learning_sessions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_tags ON public.learning_sessions USING gin(topic_tags);
 
 -- Block 4: quiz_questions and quiz_attempts
-CREATE TABLE public.quiz_questions (
+CREATE TABLE IF NOT EXISTS public.quiz_questions (
     id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     session_id  UUID REFERENCES public.learning_sessions(id) ON DELETE CASCADE NOT NULL,
     user_id     UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
@@ -133,9 +142,9 @@ CREATE TABLE public.quiz_questions (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_quiz_session ON public.quiz_questions(session_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_session ON public.quiz_questions(session_id);
 
-CREATE TABLE public.quiz_attempts (
+CREATE TABLE IF NOT EXISTS public.quiz_attempts (
     id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id     UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     session_id  UUID REFERENCES public.learning_sessions(id) ON DELETE CASCADE NOT NULL,
@@ -146,11 +155,11 @@ CREATE TABLE public.quiz_attempts (
     completed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_attempts_user ON public.quiz_attempts(user_id);
-CREATE INDEX idx_attempts_session ON public.quiz_attempts(session_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_user ON public.quiz_attempts(user_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_session ON public.quiz_attempts(session_id);
 
 -- Block 5: open_question_responses
-CREATE TABLE public.open_question_responses (
+CREATE TABLE IF NOT EXISTS public.open_question_responses (
     id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id      UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     question_id  UUID REFERENCES public.quiz_questions(id) ON DELETE CASCADE NOT NULL,
@@ -161,7 +170,7 @@ CREATE TABLE public.open_question_responses (
 );
 
 -- Block 6: knowledge_analytics
-CREATE TABLE public.knowledge_analytics (
+CREATE TABLE IF NOT EXISTS public.knowledge_analytics (
     id       UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id  UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     report_period       TEXT,
@@ -178,10 +187,10 @@ CREATE TABLE public.knowledge_analytics (
     generated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_analytics_user ON public.knowledge_analytics(user_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_user ON public.knowledge_analytics(user_id);
 
 -- Block 7: mentor
-CREATE TABLE public.mentor_threads (
+CREATE TABLE IF NOT EXISTS public.mentor_threads (
     id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id         UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     title           TEXT NOT NULL,
@@ -191,28 +200,34 @@ CREATE TABLE public.mentor_threads (
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS mentor_threads_updated_at ON public.mentor_threads;
 CREATE TRIGGER mentor_threads_updated_at
     BEFORE UPDATE ON public.mentor_threads
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE INDEX idx_mentor_threads_user ON public.mentor_threads(user_id);
-CREATE INDEX idx_mentor_threads_last_message ON public.mentor_threads(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mentor_threads_user ON public.mentor_threads(user_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_threads_last_message ON public.mentor_threads(last_message_at DESC);
 
-CREATE TABLE public.mentor_messages (
+CREATE TABLE IF NOT EXISTS public.mentor_messages (
     id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     thread_id     UUID REFERENCES public.mentor_threads(id) ON DELETE CASCADE NOT NULL,
     user_id       UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     role          TEXT CHECK (role IN ('user','assistant','system')) NOT NULL,
     intent        TEXT,
+    answer_mode   TEXT CHECK (answer_mode IN ('knowledge_first','mentor_guidance')),
     content       TEXT NOT NULL,
     response_data JSONB,
     sources       JSONB DEFAULT '[]',
+    request_payload JSONB DEFAULT '{}'::jsonb,
+    context_snapshot JSONB DEFAULT '{}'::jsonb,
+    generation_trace JSONB DEFAULT '{}'::jsonb,
+    memory_updates JSONB DEFAULT '[]'::jsonb,
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_mentor_messages_thread ON public.mentor_messages(thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_mentor_messages_thread ON public.mentor_messages(thread_id, created_at);
 
-CREATE TABLE public.mentor_memory (
+CREATE TABLE IF NOT EXISTS public.mentor_memory (
     id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id          UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     memory_type      TEXT CHECK (
@@ -226,14 +241,15 @@ CREATE TABLE public.mentor_memory (
     UNIQUE (user_id, memory_type, memory_key)
 );
 
+DROP TRIGGER IF EXISTS mentor_memory_updated_at ON public.mentor_memory;
 CREATE TRIGGER mentor_memory_updated_at
     BEFORE UPDATE ON public.mentor_memory
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE INDEX idx_mentor_memory_user ON public.mentor_memory(user_id);
-CREATE INDEX idx_mentor_memory_key ON public.mentor_memory(user_id, memory_key);
+CREATE INDEX IF NOT EXISTS idx_mentor_memory_user ON public.mentor_memory(user_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_memory_key ON public.mentor_memory(user_id, memory_key);
 
-CREATE TABLE public.job_market_signals (
+CREATE TABLE IF NOT EXISTS public.job_market_signals (
     id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     industry     TEXT,
     role_name    TEXT NOT NULL,
@@ -250,9 +266,9 @@ CREATE TABLE public.job_market_signals (
     captured_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_market_role ON public.job_market_signals(role_name);
-CREATE INDEX idx_market_industry ON public.job_market_signals(industry);
-CREATE INDEX idx_market_skills ON public.job_market_signals USING gin(skills);
+CREATE INDEX IF NOT EXISTS idx_market_role ON public.job_market_signals(role_name);
+CREATE INDEX IF NOT EXISTS idx_market_industry ON public.job_market_signals(industry);
+CREATE INDEX IF NOT EXISTS idx_market_skills ON public.job_market_signals USING gin(skills);
 
 -- Block 8: RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -267,46 +283,57 @@ ALTER TABLE public.mentor_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mentor_memory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_market_signals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
 CREATE POLICY "profiles_select_own"
     ON public.profiles FOR SELECT
     USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
 CREATE POLICY "profiles_update_own"
     ON public.profiles FOR UPDATE
     USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "onboarding_all_own" ON public.user_onboarding;
 CREATE POLICY "onboarding_all_own"
     ON public.user_onboarding FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "sessions_all_own" ON public.learning_sessions;
 CREATE POLICY "sessions_all_own"
     ON public.learning_sessions FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "quiz_questions_own" ON public.quiz_questions;
 CREATE POLICY "quiz_questions_own"
     ON public.quiz_questions FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "quiz_attempts_own" ON public.quiz_attempts;
 CREATE POLICY "quiz_attempts_own"
     ON public.quiz_attempts FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "open_responses_own" ON public.open_question_responses;
 CREATE POLICY "open_responses_own"
     ON public.open_question_responses FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "analytics_own" ON public.knowledge_analytics;
 CREATE POLICY "analytics_own"
     ON public.knowledge_analytics FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "mentor_threads_own" ON public.mentor_threads;
 CREATE POLICY "mentor_threads_own"
     ON public.mentor_threads FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "mentor_messages_own" ON public.mentor_messages;
 CREATE POLICY "mentor_messages_own"
     ON public.mentor_messages FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "mentor_memory_own" ON public.mentor_memory;
 CREATE POLICY "mentor_memory_own"
     ON public.mentor_memory FOR ALL
     USING (auth.uid() = user_id);

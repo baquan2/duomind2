@@ -572,9 +572,9 @@ def build_targeted_quiz_fallback(
 ) -> list[dict[str, Any]]:
     fact_bank = _build_targeted_quiz_fact_bank(title, summary, key_points, quiz_material)
     generic_distractors = [
-        "Má»™t nháº­n Ä‘á»‹nh quÃ¡ chung, khÃ´ng bÃ¡m sÃ¡t pháº§n kiáº¿n thá»©c nÃ y.",
-        "Má»™t cÃ¡ch hiá»ƒu lÃ¢n cáº­n nhÆ°ng khÃ´ng Ä‘Ãºng trá»ng tÃ¢m.",
-        "Má»™t phÃ¡t biá»ƒu nghe há»£p lÃ½ nhÆ°ng khÃ´ng Ä‘Æ°á»£c há»— trá»£ bá»Ÿi material.",
+        "Một nhận định quá chung, không bám sát phần kiến thức này.",
+        "Một cách hiểu lân cận nhưng không đúng trọng tâm.",
+        "Một phát biểu nghe hợp lý nhưng không được hỗ trợ bởi material.",
     ]
 
     questions: list[dict[str, Any]] = []
@@ -603,11 +603,11 @@ def build_targeted_quiz_fallback(
         option_texts = option_texts[:4]
 
         if fact["kind"] == "correction":
-            question_text = f"Theo pháº§n Ä‘Ã­nh chÃ­nh, nháº­n Ä‘á»‹nh nÃ o Ä‘Ãºng hÆ¡n vá» {title}?"
+            question_text = f"Theo phần đính chính, nhận định nào đúng hơn về {title}?"
         elif fact["kind"] == "section":
-            question_text = f"Ã nÃ o bÃ¡m Ä‘Ãºng nháº¥t vÃ o '{fact['prompt']}' trong chá»§ Ä‘á» {title}?"
+            question_text = f"Ý nào bám đúng nhất vào '{fact['prompt']}' trong chủ đề {title}?"
         else:
-            question_text = f"Nháº­n Ä‘á»‹nh nÃ o pháº£n Ã¡nh Ä‘Ãºng nháº¥t vá» {title}?"
+            question_text = f"Nhận định nào phản ánh đúng nhất về {title}?"
 
         options = [
             {"id": option_ids[option_index], "text": option_text}
@@ -634,16 +634,16 @@ def build_targeted_quiz_fallback(
             "order_index": len(questions),
             "question_type": "open",
             "question_text": (
-                f"VÃ¬ sao phÃ¡t biá»ƒu '{correction_fact['wrong']}' dá»… gÃ¢y hiá»ƒu sai vá» {title}, "
-                "vÃ  báº¡n sáº½ sá»­a láº¡i nÃ³ nhÆ° tháº¿ nÃ o?"
+                f"Vì sao phát biểu '{correction_fact['wrong']}' dễ gây hiểu sai về {title}, "
+                "và bạn sẽ sửa lại nó như thế nào?"
             ),
             "thinking_hints": [
                 "Chá»‰ ra Ä‘iá»ƒm sai hoáº·c thiáº¿u",
-                "DÃ¹ng láº¡i cÃ¡ch diá»…n Ä‘áº¡t Ä‘Ãºng hÆ¡n tá»« material",
+                "Dùng lại cách diễn đạt đúng hơn từ material",
             ],
             "sample_answer_points": [
-                "NÃªu Ä‘Æ°á»£c chÃ­nh xÃ¡c pháº§n dá»… hiá»ƒu sai",
-                "Viáº¿t láº¡i cáº¥u khÃ¡i niá»‡m hoáº·c nháº­n Ä‘á»‹nh Ä‘Ãºng hÆ¡n",
+                "Nêu được chính xác phần dễ hiểu sai",
+                "Viết lại câu khái niệm hoặc nhận định đúng hơn",
             ],
             "difficulty": "hard",
         }
@@ -651,14 +651,14 @@ def build_targeted_quiz_fallback(
         open_question_1 = {
             "order_index": len(questions),
             "question_type": "open",
-            "question_text": f"Äiá»u nÃ o trong {title} dá»… bá»‹ hiá»ƒu láº§m nháº¥t, vÃ  báº¡n sáº½ giáº£i thÃ­ch láº¡i ra sao?",
+            "question_text": f"Điều nào trong {title} dễ bị hiểu lầm nhất, và bạn sẽ giải thích lại ra sao?",
             "thinking_hints": [
-                "Chá»n má»™t Ã½ cá»‘t lÃµi tháº­t dá»… lÃ¢m sang cÃ¡ch hiá»ƒu khÃ¡c",
-                "Giáº£i thÃ­ch láº¡i báº±ng ngÃ´n ngá»¯ ngáº¯n vÃ  rÃµ",
+                "Chọn một ý cốt lõi thật dễ lầm sang cách hiểu khác",
+                "Giải thích lại bằng ngôn ngữ ngắn và rõ",
             ],
             "sample_answer_points": [
-                "XÃ¡c Ä‘á»‹nh Ä‘Ãºng Ã½ cá»‘t lÃµi hoáº·c cÆ¡ cháº¿",
-                "Cho tháº¥y ranh giá»›i giá»¯a hiá»ƒu Ä‘Ãºng vÃ  hiá»ƒu sai",
+                "Xác định đúng ý cốt lõi hoặc cơ chế",
+                "Cho thấy ranh giới giữa hiểu đúng và hiểu sai",
             ],
             "difficulty": "hard",
         }
@@ -667,14 +667,14 @@ def build_targeted_quiz_fallback(
         open_question_2 = {
             "order_index": len(questions) + 1,
             "question_type": "open",
-            "question_text": f"HÃ£y dÃ¹ng má»™t tÃ¬nh huá»‘ng cá»¥ thá»ƒ Ä‘á»ƒ giáº£i thÃ­ch '{section_fact['prompt']}' trong chá»§ Ä‘á» {title}.",
+            "question_text": f"Hãy dùng một tình huống cụ thể để giải thích '{section_fact['prompt']}' trong chủ đề {title}.",
             "thinking_hints": [
                 "Chá»n bá»‘i cáº£nh gáº§n thá»±c táº¿",
-                "LiÃªn há»‡ trá»±c tiáº¿p vá»›i Ã½ cá»‘t lÃµi trong material",
+                "Liên hệ trực tiếp với ý cốt lõi trong material",
             ],
             "sample_answer_points": [
-                "NÃªu Ä‘Æ°á»£c tÃ¬nh huá»‘ng hoáº·c vÃ­ dá»¥ cá»¥ thá»ƒ",
-                "Giáº£i thÃ­ch Ä‘Ãºng vÃ¬ sao vÃ­ dá»¥ Ä‘Ã³ thá»ƒ hiá»‡n Ä‘Æ°á»£c Ã½ cá»‘t lÃµi",
+                "Nêu được tình huống hoặc ví dụ cụ thể",
+                "Giải thích đúng vì sao ví dụ đó thể hiện được ý cốt lõi",
             ],
             "difficulty": "medium",
         }
@@ -682,13 +682,13 @@ def build_targeted_quiz_fallback(
         open_question_2 = {
             "order_index": len(questions) + 1,
             "question_type": "open",
-            "question_text": f"Náº¿u pháº£i giáº£i thÃ­ch {title} cho ngÆ°á»i má»›i, báº¡n sáº½ chá»n 2 Ã½ nÃ o Ä‘á»ƒ báº¯t Ä‘áº§u?",
+            "question_text": f"Nếu phải giải thích {title} cho người mới, bạn sẽ chọn 2 ý nào để bắt đầu?",
             "thinking_hints": [
-                "Æ¯u tiÃªn 2 Ã½ cá»‘t lÃµi nháº¥t",
-                "Giáº£i thÃ­ch vÃ¬ sao khÃ´ng nÃªn báº¯t Ä‘áº§u tá»« chi tiáº¿t phá»¥",
+                "Ưu tiên 2 ý cốt lõi nhất",
+                "Giải thích vì sao không nên bắt đầu từ chi tiết phụ",
             ],
             "sample_answer_points": [
-                "Chá»n Ä‘Ãºng 2 Ã½ nÃªn náº¯m trÆ°á»›c",
+                "Chọn đúng 2 ý nên nắm trước",
                 "Cho tháº¥y logic sáº¯p xáº¿p kiáº¿n thá»©c",
             ],
             "difficulty": "medium",

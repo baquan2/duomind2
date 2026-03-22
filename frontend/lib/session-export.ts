@@ -7,6 +7,7 @@ import {
 
 import type { SessionDetailResponse } from "@/types"
 
+
 function slugify(text: string) {
   return (
     text
@@ -19,6 +20,7 @@ function slugify(text: string) {
   )
 }
 
+
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
@@ -30,6 +32,7 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url)
 }
 
+
 function createBullet(text: string, level = 0) {
   return new Paragraph({
     text,
@@ -37,6 +40,7 @@ function createBullet(text: string, level = 0) {
     spacing: { after: 140 },
   })
 }
+
 
 function createHeading(
   text: string,
@@ -48,6 +52,7 @@ function createHeading(
     spacing: { before: 220, after: 120 },
   })
 }
+
 
 function getKnowledgeDetailEntries(
   data: SessionDetailResponse["session"]["infographic_data"]
@@ -67,9 +72,37 @@ function getKnowledgeDetailEntries(
   ].filter((section) => section?.title && section?.content)
 }
 
+
 function getSourceEntries(data: SessionDetailResponse["session"]["sources"]) {
   return (data || []).filter((source) => source?.label && source?.url)
 }
+
+
+function getRelatedMaterials(data: SessionDetailResponse["session"]) {
+  const generationTrace = data.generation_trace || {}
+  const requestPayload = data.request_payload || {}
+  return (
+    (generationTrace.related_materials as SessionDetailResponse["session"]["sources"]) ||
+    (requestPayload.related_materials as SessionDetailResponse["session"]["sources"]) ||
+    []
+  ).filter((source) => source?.label && source?.url)
+}
+
+
+function prettyJson(value: unknown) {
+  if (!value) {
+    return "Không có dữ liệu."
+  }
+  if (typeof value === "string") {
+    return value
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
 
 export async function exportSessionAsWord(data: SessionDetailResponse) {
   const { session, quiz_questions } = data
@@ -82,9 +115,15 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
     createBullet(
       `Loại phiên: ${session.session_type === "analyze" ? "Phân tích" : "Khám phá"}`
     ),
+    createBullet(`Mode: ${session.session_subtype || "overview"}`),
     createBullet(`Thời gian: ${new Date(session.created_at).toLocaleString("vi-VN")}`),
     createBullet(`Chủ đề: ${(session.topic_tags || []).join(", ") || "Không có"}`),
   ]
+
+  if (session.user_input) {
+    children.push(createHeading("Raw input", HeadingLevel.HEADING_1))
+    children.push(new Paragraph({ text: session.user_input }))
+  }
 
   if (session.summary) {
     children.push(createHeading("Tóm tắt", HeadingLevel.HEADING_1))
@@ -115,8 +154,20 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
 
   const sourceEntries = getSourceEntries(session.sources)
   if (sourceEntries.length) {
-    children.push(createHeading("Nguồn xác minh", HeadingLevel.HEADING_1))
+    children.push(createHeading("Nguồn đã dùng", HeadingLevel.HEADING_1))
     sourceEntries.forEach((source) => {
+      children.push(createBullet(source.label))
+      children.push(createBullet(source.url, 1))
+      if (source.snippet) {
+        children.push(createBullet(source.snippet, 1))
+      }
+    })
+  }
+
+  const relatedMaterials = getRelatedMaterials(session)
+  if (relatedMaterials.length) {
+    children.push(createHeading("Tài liệu liên quan", HeadingLevel.HEADING_1))
+    relatedMaterials.forEach((source) => {
       children.push(createBullet(source.label))
       children.push(createBullet(source.url, 1))
       if (source.snippet) {
@@ -147,6 +198,11 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
     })
   }
 
+  children.push(createHeading("Trace", HeadingLevel.HEADING_1))
+  children.push(createBullet(`Request payload: ${prettyJson(session.request_payload)}`))
+  children.push(createBullet(`Context snapshot: ${prettyJson(session.context_snapshot)}`))
+  children.push(createBullet(`Generation trace: ${prettyJson(session.generation_trace)}`))
+
   const document = new Document({
     sections: [
       {
@@ -161,16 +217,22 @@ export async function exportSessionAsWord(data: SessionDetailResponse) {
   downloadBlob(blob, fileName)
 }
 
+
 export function exportSessionAsMarkdown(data: SessionDetailResponse) {
   const { session, quiz_questions } = data
   const lines: string[] = [
     `# ${session.title}`,
     "",
     `- Loại phiên: ${session.session_type === "analyze" ? "Phân tích" : "Khám phá"}`,
+    `- Mode: ${session.session_subtype || "overview"}`,
     `- Thời gian: ${new Date(session.created_at).toLocaleString("vi-VN")}`,
     `- Chủ đề: ${(session.topic_tags || []).join(", ") || "Không có"}`,
     "",
   ]
+
+  if (session.user_input) {
+    lines.push("## Raw input", "", session.user_input, "")
+  }
 
   if (session.summary) {
     lines.push("## Tóm tắt", "")
@@ -202,8 +264,21 @@ export function exportSessionAsMarkdown(data: SessionDetailResponse) {
 
   const sourceEntries = getSourceEntries(session.sources)
   if (sourceEntries.length) {
-    lines.push("## Nguồn xác minh", "")
+    lines.push("## Nguồn đã dùng", "")
     sourceEntries.forEach((source, index) => {
+      lines.push(`${index + 1}. ${source.label}`)
+      lines.push(`   - URL: ${source.url}`)
+      if (source.snippet) {
+        lines.push(`   - Ghi chú: ${source.snippet}`)
+      }
+    })
+    lines.push("")
+  }
+
+  const relatedMaterials = getRelatedMaterials(session)
+  if (relatedMaterials.length) {
+    lines.push("## Tài liệu liên quan", "")
+    relatedMaterials.forEach((source, index) => {
       lines.push(`${index + 1}. ${source.label}`)
       lines.push(`   - URL: ${source.url}`)
       if (source.snippet) {
@@ -238,6 +313,17 @@ export function exportSessionAsMarkdown(data: SessionDetailResponse) {
     })
     lines.push("")
   }
+
+  lines.push("## Trace", "")
+  lines.push("```json")
+  lines.push(prettyJson(session.request_payload))
+  lines.push("```", "")
+  lines.push("```json")
+  lines.push(prettyJson(session.context_snapshot))
+  lines.push("```", "")
+  lines.push("```json")
+  lines.push(prettyJson(session.generation_trace))
+  lines.push("```", "")
 
   const fileName = `${slugify(session.title)}.md`
   const blob = new Blob([lines.join("\n")], {

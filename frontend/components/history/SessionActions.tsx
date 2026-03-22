@@ -16,6 +16,7 @@ import {
 import { deleteSession, getSessionDetail } from "@/lib/api/history"
 import { exportSessionAsMarkdown, exportSessionAsWord } from "@/lib/session-export"
 
+
 interface SessionActionsProps {
   sessionId: string
   sessionTitle: string
@@ -23,6 +24,7 @@ interface SessionActionsProps {
   onDeleteSuccess?: () => void
   compact?: boolean
 }
+
 
 export function SessionActions({
   sessionId,
@@ -118,9 +120,8 @@ export function SessionActions({
           <DialogHeader>
             <DialogTitle>Xóa phiên học?</DialogTitle>
             <DialogDescription>
-              Phiên{" "}
-              <span className="font-medium text-foreground">{sessionTitle}</span>{" "}
-              sẽ bị xóa cùng quiz và dữ liệu liên quan.
+              Phiên <span className="font-medium text-foreground">{sessionTitle}</span> sẽ bị
+              xóa cùng quiz và dữ liệu liên quan.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

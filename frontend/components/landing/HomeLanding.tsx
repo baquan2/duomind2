@@ -6,16 +6,33 @@ import {
   ArrowRight,
   BrainCircuit,
   Compass,
+  FileText,
   MessagesSquare,
-  Play,
+  Network,
+  Route,
+  ScanSearch,
   ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
 } from "lucide-react"
+import { useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  conclusionBullets,
+  demoJourney,
+  discussionCards,
+  methodologyFlow,
+  objectiveCards,
+  openingSignals,
+  pitchDeckSections,
+  problemCards,
+  resultComparisons,
+  type PitchDeckSectionMeta,
+  valueCards,
+} from "@/lib/pitch-deck-content"
 
 type HomeLandingProps = {
   navHref: string
@@ -25,78 +42,58 @@ type HomeLandingProps = {
   statusLabel: string
 }
 
-type FeatureCard = {
-  badge: string
-  description: string
-  icon: LucideIcon
-  title: string
+const sectionIcons: Record<string, LucideIcon> = {
+  opening: BrainCircuit,
+  problem: Target,
+  aims: Sparkles,
+  methodology: Network,
+  results: TrendingUp,
+  discussion: MessagesSquare,
+  conclusion: Route,
 }
 
-const heroStats = [
+const impactSignals = [
+  { label: "Biểu hiện", value: "Không biết học gì trước" },
+  { label: "Hệ quả", value: "Học nhiều nhưng khó tiến bộ" },
+  { label: "Khoảng trống", value: "Thiếu vòng phản hồi cá nhân hóa" },
+]
+
+const productProofPoints = [
+  "Mentor AI trả lời theo đúng loại nhu cầu thay vì phản hồi một kiểu cho mọi câu hỏi.",
+  "Explore buộc AI giải thích đúng bản chất chủ đề và bám thẳng câu hỏi người học vừa đặt ra.",
+  "Analyze giúp biết nội dung đúng hay sai, phần trọng tâm cần nắm và nguồn tham khảo để đối chiếu.",
+]
+
+const systemPrinciples = [
   {
-    label: "Giá trị cốt lõi",
-    value: "Vai trò -> Khoảng trống -> Lộ trình",
-    detail: "Chốt mục tiêu nghề nghiệp, khoảng trống kỹ năng và bước tiếp theo trong cùng một luồng.",
+    title: "Question first",
+    detail: "Câu hỏi và mục tiêu học tập phải đi trước, hồ sơ chỉ là ngữ cảnh hỗ trợ.",
   },
   {
-    label: "Ngữ cảnh onboarding",
-    value: "Mục tiêu + bối cảnh",
-    detail:
-      "Thu dữ liệu đầu ra mong muốn, khó khăn hiện tại và ràng buộc học tập để AI hiểu đúng người học.",
+    title: "Role-based AI",
+    detail: "Mentor, Explore và Analyze được thiết kế theo vai trò khác nhau nên output cũng khác nhau.",
   },
   {
-    label: "Vòng lặp tiến bộ",
-    value: "Mentor | Lộ trình | Lịch sử",
-    detail:
-      "Mentor, roadmap, Explore, Analyze và history được nối thành một vòng lặp có thể quay lại.",
+    title: "Evidence aware",
+    detail: "Khi kiểm tra kiến thức, hệ thống ưu tiên nguồn và logic xác minh thay vì suy đoán theo trí nhớ mô hình.",
   },
 ]
 
-const featureCards: FeatureCard[] = [
+const outputExamples = [
   {
-    badge: "Ngữ cảnh nghề nghiệp",
-    title: "Hiểu đúng người học trước khi đề xuất lộ trình",
-    description:
-      "DUO MIND bắt đầu bằng role mục tiêu, đầu ra mong muốn, khó khăn hiện tại và quỹ học thực tế thay vì hỏi đáp chung chung.",
-    icon: MessagesSquare,
-  },
-  {
-    badge: "Mentor + roadmap",
-    title: "Biến AI thành mentor và bộ lập kế hoạch học tập",
-    description:
-      "Dashboard và lộ trình hiện ngay hành động nên làm tiếp, khoảng trống ưu tiên và thứ tự học hợp lý để người dùng biết cần làm gì tiếp.",
-    icon: TrendingUp,
-  },
-  {
-    badge: "Explore + Analyze",
-    title: "Học đúng thứ đang thiếu thay vì học theo cảm tính",
-    description:
-      "Người dùng có thể học chủ đề ưu tiên trong Explore hoặc đưa note, tài liệu thật vào Analyze để khóa lại kiến thức.",
+    title: "Định hướng nghề nghiệp",
+    detail: "Từ onboarding và hội thoại, hệ thống chốt vai trò mục tiêu, điểm mạnh hiện có và khoảng trống ưu tiên.",
     icon: Compass,
   },
-]
-
-const journey = [
   {
-    step: "01 / Understand",
-    title: "Khóa mục tiêu và bối cảnh",
-    description:
-      "Onboarding thu role mục tiêu, đầu ra mong muốn, khó khăn hiện tại và quỹ học mỗi ngày để tạo bối cảnh cá nhân hóa.",
+    title: "Kiến thức đúng trọng tâm",
+    detail: "Explore trình bày lại khái niệm, cơ chế và cấu trúc theo đúng câu hỏi người học vừa đặt ra.",
     icon: Sparkles,
   },
   {
-    step: "02 / Plan",
-    title: "Chốt thứ tự học bằng mentor và roadmap",
-    description:
-      "Dashboard và lộ trình hiện ngay mức sẵn sàng, khoảng trống ưu tiên và hành động tiếp theo để người dùng thấy đường đi rõ hơn.",
-    icon: Target,
-  },
-  {
-    step: "03 / Execute",
-    title: "Học có đầu ra và theo dõi được tiến độ",
-    description:
-      "Explore, Analyze và history giúp người dùng học trên đúng gap, tự kiểm tra lại hiểu biết và theo dõi tiến bộ.",
-    icon: ShieldCheck,
+    title: "Sửa hiểu sai có chứng cứ",
+    detail: "Analyze giúp người học biết nội dung nào đúng, nội dung nào sai và có thể mở nguồn tham khảo liên quan.",
+    icon: ScanSearch,
   },
 ]
 
@@ -108,109 +105,197 @@ export function HomeLanding({
   statusLabel,
 }: HomeLandingProps) {
   const shouldReduceMotion = useReducedMotion()
+  const [activeSection, setActiveSection] = useState(pitchDeckSections[0]?.id ?? "opening")
   const headlineFont = "var(--font-nunito), var(--font-be-vietnam-pro), sans-serif"
 
-  const reveal = (delay = 0) => ({
-    initial: shouldReduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 },
+  useEffect(() => {
+    const nodes = pitchDeckSections
+      .map((section) => document.getElementById(section.id))
+      .filter((node): node is HTMLElement => Boolean(node))
+
+    if (!nodes.length) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)
+
+        if (visible[0]?.target?.id) {
+          setActiveSection(visible[0].target.id)
+        }
+      },
+      {
+        rootMargin: "-18% 0px -46% 0px",
+        threshold: [0.25, 0.45, 0.65],
+      }
+    )
+
+    nodes.forEach((node) => observer.observe(node))
+    return () => observer.disconnect()
+  }, [])
+
+  const reveal = (delay = 0, y = 28) => ({
+    initial: false,
+    whileInView: { opacity: 1, y: 0, scale: 1 },
+    viewport: { amount: 0.25, once: true },
     transition: {
       delay,
       duration: shouldReduceMotion ? 0 : 0.72,
       ease: [0.22, 1, 0.36, 1] as const,
     },
-    viewport: { amount: 0.2, once: true },
-    whileInView: { opacity: 1, y: 0 },
   })
 
   return (
-    <main className="relative overflow-hidden bg-[#04121d] text-slate-100">
+    <main className="relative overflow-x-clip bg-[#07131d] text-slate-100">
       <div className="pointer-events-none absolute inset-0">
-        <div className="landing-grid absolute inset-0 opacity-70" />
-        <div className="landing-noise absolute inset-0 opacity-45" />
-        <div className="absolute left-[-10rem] top-14 h-72 w-72 rounded-full bg-cyan-400/18 blur-3xl animate-soft-float" />
-        <div className="absolute right-[-8rem] top-40 h-80 w-80 rounded-full bg-sky-400/16 blur-3xl animate-soft-float" />
-        <div className="absolute bottom-16 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-amber-300/14 blur-3xl animate-soft-float" />
+        <div className="pitch-grid absolute inset-0 opacity-65" />
+        <div className="pitch-noise absolute inset-0 opacity-60" />
+        <div className="absolute left-[-12rem] top-16 h-80 w-80 rounded-full bg-cyan-300/12 blur-3xl" />
+        <div className="absolute right-[-10rem] top-56 h-96 w-96 rounded-full bg-amber-200/10 blur-3xl" />
+        <div className="absolute bottom-20 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-emerald-300/10 blur-3xl" />
       </div>
 
       <div className="relative">
-        <section className="container px-4 pb-20 pt-6 sm:pt-8 lg:pb-28">
-          <motion.nav
+        <div className="sticky top-0 z-50 px-3 pt-3 sm:px-4 sm:pt-4">
+          <motion.div
             {...reveal()}
-            className="flex items-center justify-between gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur-xl"
+            className="mx-auto max-w-7xl rounded-[1.8rem] border border-white/10 bg-[#07131d]/82 px-3 py-3 shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:px-4"
           >
-            <a className="flex items-center gap-3" href="/">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.08] text-cyan-100 shadow-[0_0_32px_rgba(34,211,238,0.18)]">
-                <BrainCircuit className="size-5" />
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:gap-4">
+              <div className="flex min-w-0 items-center gap-3 xl:w-[18rem] xl:shrink-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/12 bg-white/[0.06] text-cyan-100">
+                  <BrainCircuit className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold tracking-[0.24em] text-white">DUO MIND</div>
+                  <div className="text-xs text-white/58">Pitch deck học thuật cho hệ thống AI cố vấn học tập</div>
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-semibold tracking-[0.28em] text-white/95">DUO MIND</div>
-                <div className="text-xs text-white/55">AI cố vấn và lập kế hoạch học tập</div>
-              </div>
-            </a>
 
-            <div className="hidden items-center gap-6 text-sm text-white/70 md:flex">
-              <a className="transition-colors hover:text-white" href="#value">
-                Giá trị
-              </a>
-              <a className="transition-colors hover:text-white" href="#journey">
-                Hành trình
-              </a>
-              <a className="transition-colors hover:text-white" href="#launch">
-                Bắt đầu
-              </a>
+              <div className="min-w-0 flex-1">
+                <div className="rounded-[1.4rem] border border-white/8 bg-white/[0.04] px-2 py-2">
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[#07131d] via-[#07131d]/80 to-transparent" />
+                    <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#07131d] via-[#07131d]/80 to-transparent" />
+                    <div className="scrollbar-none flex gap-2 overflow-x-auto px-1">
+                      {pitchDeckSections.map((section) => {
+                        const Icon = sectionIcons[section.id] ?? FileText
+                        const isActive = activeSection === section.id
+
+                        return (
+                          <a
+                            key={section.id}
+                            href={`#${section.id}`}
+                            className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[0.92rem] transition-all ${
+                              isActive
+                                ? "border-cyan-200/30 bg-cyan-200/14 text-white shadow-[0_10px_26px_rgba(34,211,238,0.08)]"
+                                : "border-white/10 bg-transparent text-white/66 hover:border-white/18 hover:bg-white/[0.05] hover:text-white"
+                            }`}
+                          >
+                            <Icon className="size-3.5 shrink-0" />
+                            <span className="text-[0.62rem] uppercase tracking-[0.18em] text-white/40">
+                              {section.index}
+                            </span>
+                            <span className="whitespace-nowrap">{section.navLabel}</span>
+                          </a>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 xl:shrink-0 xl:justify-end">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-10 rounded-full border-white/14 bg-white/[0.04] px-4 text-white hover:bg-white/[0.08] hover:text-white"
+                >
+                  <a href={navHref}>
+                    {navLabel}
+                    <ArrowRight className="ml-2 size-4" />
+                  </a>
+                </Button>
+                <Button
+                  asChild
+                  className="h-10 rounded-full bg-[linear-gradient(120deg,#eefbf9_0%,#7dd3fc_34%,#67e8f9_66%,#fde68a_100%)] px-4 text-slate-950 hover:brightness-105"
+                >
+                  <a href={primaryHref}>
+                    {primaryLabel}
+                    <ArrowRight className="ml-2 size-4" />
+                  </a>
+                </Button>
+              </div>
             </div>
+          </motion.div>
+        </div>
 
-            <Button
-              asChild
-              className="h-11 rounded-full border border-white/12 bg-white/[0.08] px-5 text-white hover:bg-white/[0.12]"
-            >
-              <a href={navHref}>
-                {navLabel}
-                <ArrowRight className="ml-2 size-4" />
-              </a>
-            </Button>
-          </motion.nav>
-
-          <div className="grid gap-14 pt-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:items-center lg:pt-20">
+        <section id="opening" className="flex min-h-[96vh] items-center px-4 pb-16 pt-10 scroll-mt-32">
+          <div className="container grid gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
             <div className="space-y-8">
-              <motion.div {...reveal(0.06)} className="space-y-4">
-                <Badge className="h-auto rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-cyan-50">
-                  AI cố vấn và lập kế hoạch học tập
+              <motion.div {...reveal(0.04)} className="space-y-4">
+                <Badge className="h-auto rounded-full border border-white/10 bg-white/[0.05] px-4 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-white/78">
+                  {pitchDeckSections[0].posterLabel} • Problem / Solution / Value
                 </Badge>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-white/64">
+                <div className="flex flex-wrap gap-2 text-sm text-white/64">
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">
-                    {statusLabel}
+                    Audience: Giảng viên / Hội đồng
                   </span>
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">
-                    Vai trò mục tiêu, khoảng trống kỹ năng, lộ trình và tiến độ
+                    HTML5 presentation landing
                   </span>
                 </div>
               </motion.div>
 
-              <motion.div {...reveal(0.12)} className="space-y-5">
+              <motion.div {...reveal(0.1)} className="space-y-5">
+                <p className="text-sm uppercase tracking-[0.28em] text-cyan-100/75">Thesis Statement</p>
                 <h1
-                  className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white sm:text-6xl lg:text-7xl"
+                  className="max-w-5xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white sm:text-6xl lg:text-7xl"
                   style={{ fontFamily: headlineFont }}
                 >
-                  DUO MIND giúp bạn biết mình đang thiếu gì,
-                  <span className="mt-3 block bg-[linear-gradient(120deg,#f0f9ff_10%,#67e8f9_38%,#7dd3fc_62%,#fde68a_100%)] bg-clip-text text-transparent">
-                    và học theo đúng lộ trình để tới mục tiêu nghề nghiệp.
-                  </span>
+                  {pitchDeckSections[0].title}
                 </h1>
-                <p className="max-w-2xl text-base leading-8 text-white/72 sm:text-lg">
-                  DUO MIND được thiết kế cho sinh viên và người đi làm trẻ đang cần một hệ thống AI
-                  có thể hiểu bối cảnh thật, chốt khoảng trống kỹ năng, gợi ý lộ trình và giữ lại toàn bộ tiến
-                  trình học tập theo mục tiêu nghề nghiệp đã chọn.
+                <p className="max-w-3xl text-base leading-8 text-white/72 sm:text-lg">
+                  {pitchDeckSections[0].thesis}
                 </p>
               </motion.div>
 
-              <motion.div {...reveal(0.18)} className="flex flex-wrap gap-3">
+              <motion.div {...reveal(0.16)} className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur-xl">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/44">Luận cứ trung tâm của đề tài</div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {[
+                    {
+                      title: "Vấn đề",
+                      detail: "Người học thiếu định hướng cá nhân hóa và dễ học sai trọng tâm vì không biết mình đang thiếu gì.",
+                    },
+                    {
+                      title: "Giải pháp",
+                      detail: "DUO MIND dùng bối cảnh người học và pipeline AI rõ vai trò để biến dữ liệu thành gợi ý học tập có hành động.",
+                    },
+                    {
+                      title: "Giá trị",
+                      detail: "Hệ thống rút ngắn thời gian định hướng, tăng độ đúng trọng tâm và tạo vòng lặp tiến bộ có thể theo dõi.",
+                    },
+                  ].map((item) => (
+                    <div key={item.title} className="rounded-[1.6rem] border border-white/10 bg-[#091a27]/80 p-4">
+                      <div className="text-xs uppercase tracking-[0.18em] text-white/45">{item.title}</div>
+                      <p className="mt-3 text-sm leading-7 text-white/74">{item.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+
+              <motion.div {...reveal(0.22)} className="flex flex-wrap gap-3">
                 <Button
                   asChild
                   size="lg"
-                  className="h-12 rounded-full bg-[linear-gradient(120deg,#ecfeff_0%,#67e8f9_38%,#7dd3fc_68%,#fde68a_100%)] px-6 text-slate-950 hover:brightness-105"
+                  className="h-12 rounded-full bg-[linear-gradient(120deg,#eefbf9_0%,#7dd3fc_34%,#67e8f9_66%,#fde68a_100%)] px-6 text-slate-950 hover:brightness-105"
                 >
-                  <a href={primaryHref}>
-                    {primaryLabel}
+                  <a href="#methodology">
+                    Xem mô hình vận hành
                     <ArrowRight className="ml-2 size-4" />
                   </a>
                 </Button>
@@ -218,238 +303,405 @@ export function HomeLanding({
                   asChild
                   size="lg"
                   variant="outline"
-                  className="h-12 rounded-full border-white/12 bg-white/[0.04] px-6 text-white hover:bg-white/[0.08] hover:text-white"
+                  className="h-12 rounded-full border-white/14 bg-white/[0.04] px-6 text-white hover:bg-white/[0.08] hover:text-white"
                 >
-                  <a href="#value">
-                    <Play className="mr-2 size-4" />
-                    Xem giá trị
+                  <a href={primaryHref}>
+                    {primaryLabel}
+                    <ArrowRight className="ml-2 size-4" />
                   </a>
                 </Button>
-              </motion.div>
-
-              <motion.div {...reveal(0.24)} className="grid gap-3 sm:grid-cols-3">
-                {heroStats.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-[1.7rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur-xl"
-                  >
-                    <div className="text-xs uppercase tracking-[0.22em] text-white/45">{item.label}</div>
-                    <div className="mt-3 text-3xl font-semibold text-white">{item.value}</div>
-                    <p className="mt-3 text-sm leading-6 text-white/62">{item.detail}</p>
-                  </div>
-                ))}
               </motion.div>
             </div>
 
             <motion.div
-              {...reveal(0.16)}
-              className="rounded-[2.6rem] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl sm:p-6"
+              {...reveal(0.14)}
+              className="pitch-panel relative overflow-hidden rounded-[2.6rem] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-5 sm:p-6"
             >
-              <div className="rounded-[2rem] border border-white/10 bg-[#071b2b]/90 p-5">
-                <div className="flex items-center justify-between gap-3">
+              <div className="pitch-beam" />
+              <div className="relative space-y-5">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-xs uppercase tracking-[0.22em] text-white/40">Command center</div>
-                    <div
-                      className="mt-2 text-xl font-semibold text-white"
-                      style={{ fontFamily: headlineFont }}
-                    >
-                      Một hệ học tập AI không chỉ trả lời, mà còn giúp ra quyết định học gì tiếp theo.
+                    <div className="text-xs uppercase tracking-[0.22em] text-white/40">Opening Narrative</div>
+                    <div className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white" style={{ fontFamily: headlineFont }}>
+                      Giá trị của website không nằm ở một câu trả lời hay, mà nằm ở khả năng dẫn người học đi đúng hướng.
                     </div>
                   </div>
-                  <TrendingUp className="size-5 text-cyan-200" />
+                  <ShieldCheck className="mt-1 size-5 text-cyan-100" />
                 </div>
 
-                <div className="mt-8 flex h-36 items-end gap-2">
-                  {[48, 72, 60, 92, 76, 54, 82].map((height) => (
-                    <div
-                      key={height}
-                      className="flex-1 rounded-t-[999px] bg-[linear-gradient(180deg,rgba(254,240,138,0.95)_0%,rgba(103,232,249,0.78)_58%,rgba(8,145,178,0.24)_100%)]"
-                      style={{ height: `${height}%` }}
-                    />
-                  ))}
-                </div>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  {[
-                    { metric: "Target role", value: "Định vị rõ" },
-                    { metric: "Skill gap", value: "Thấy ngay" },
-                    { metric: "Lộ trình", value: "Có hành động" },
-                  ].map((item) => (
-                    <div
-                      key={item.metric}
-                      className="rounded-[1.3rem] border border-white/10 bg-white/[0.05] p-3"
+                <div className="grid gap-3">
+                  {openingSignals.map((item, index) => (
+                    <motion.div
+                      key={item.title}
+                      {...reveal(0.2 + index * 0.05, 22)}
+                      className="rounded-[1.7rem] border border-white/10 bg-[#081520]/92 p-4"
                     >
-                      <div className="text-[0.68rem] uppercase tracking-[0.18em] text-white/45">
-                        {item.metric}
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 items-center justify-center rounded-2xl bg-white/[0.06] text-sm font-semibold text-cyan-100">
+                          {index + 1}
+                        </div>
+                        <div className="text-lg font-semibold text-white">{item.title}</div>
                       </div>
-                      <div className="mt-2 text-lg font-semibold text-white">{item.value}</div>
-                    </div>
+                      <p className="mt-3 text-sm leading-7 text-white/68">{item.detail}</p>
+                    </motion.div>
                   ))}
                 </div>
-              </div>
 
-              <div className="mt-5 grid gap-4">
-                {[
-                  "Mentor AI đi thẳng vào role mục tiêu, kỹ năng còn thiếu và thứ tự học hợp lý.",
-                  "Lộ trình hiện ngay mức sẵn sàng, khoảng trống ưu tiên và hành động nên làm tiếp.",
-                  "Explore và Analyze giúp học trên đúng gap, không học lan man.",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="rounded-[1.6rem] border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-white/68"
-                  >
-                    {item}
-                  </div>
-                ))}
+                <div className="rounded-[1.8rem] border border-cyan-200/14 bg-cyan-200/[0.08] p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-cyan-50/78">Current framing</div>
+                  <p className="mt-3 text-sm leading-7 text-white/80">{statusLabel}</p>
+                </div>
               </div>
             </motion.div>
           </div>
         </section>
 
-        <section id="value" className="container px-4 py-20 lg:py-24">
-          <motion.div {...reveal()} className="mx-auto max-w-3xl text-center">
-            <Badge className="h-auto rounded-full border border-white/10 bg-white/[0.06] px-4 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-white/72">
-              Giá trị nổi bật
-            </Badge>
-            <h2
-              className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl"
-              style={{ fontFamily: headlineFont }}
-            >
-              DUO MIND được thiết kế để biến việc học thành một hành trình có mục tiêu, có thứ tự
-              và có đầu ra.
-            </h2>
-            <p className="mt-5 text-base leading-8 text-white/64 sm:text-lg">
-              Từ việc hiểu người học, gợi ý roadmap, phân tích nội dung cho đến theo dõi tiến độ,
-              mỗi tính năng đều phục vụ một câu hỏi rất cụ thể: người dùng đang thiếu gì và nên làm
-              gì tiếp theo.
-            </p>
-          </motion.div>
+        <section id="problem" className="flex min-h-[92vh] items-center px-4 py-16 scroll-mt-32">
+          <div className="container grid gap-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-start">
+            <motion.div {...reveal()} className="space-y-6">
+              <SectionHeader section={pitchDeckSections[1]} headlineFont={headlineFont} />
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/42">Chứng minh vấn đề</div>
+                <p className="mt-4 text-base leading-8 text-white/72">{pitchDeckSections[1].thesis}</p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  {impactSignals.map((item) => (
+                    <div key={item.label} className="rounded-[1.4rem] border border-white/10 bg-[#091925]/88 p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-white/42">{item.label}</div>
+                      <div className="mt-3 text-lg font-semibold text-white">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
 
-          <div className="mt-12 grid gap-5 lg:grid-cols-3">
-            {featureCards.map((item, index) => {
-              const Icon = item.icon
-              return (
+            <div className="grid gap-4 md:grid-cols-3">
+              {problemCards.map((item, index) => (
                 <motion.div
                   key={item.title}
                   {...reveal(0.08 + index * 0.06)}
-                  className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur-xl"
+                  className="rounded-[1.9rem] border border-white/10 bg-[#081520]/94 p-5"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.22em] text-white/42">{item.badge}</div>
-                      <div className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
-                        {item.title}
-                      </div>
-                    </div>
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-200/18 bg-cyan-200/10 text-cyan-50">
-                      <Icon className="size-5" />
-                    </div>
-                  </div>
-                  <p className="mt-4 text-sm leading-7 text-white/66">{item.description}</p>
+                  <div className="text-xs uppercase tracking-[0.2em] text-white/42">Vấn đề {index + 1}</div>
+                  <div className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-white">{item.title}</div>
+                  <p className="mt-4 text-sm leading-7 text-white/66">{item.detail}</p>
                 </motion.div>
-              )
-            })}
+              ))}
+            </div>
           </div>
         </section>
 
-        <section id="journey" className="container px-4 pb-24">
-          <motion.div
-            {...reveal()}
-            className="rounded-[2.4rem] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-6 sm:p-8"
-          >
-            <div className="grid gap-10 xl:grid-cols-[0.82fr_1.18fr] xl:items-start">
-              <div>
-                <Badge className="h-auto rounded-full border border-amber-200/20 bg-amber-200/10 px-4 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-amber-50">
-                  Hành trình học
-                </Badge>
-                <h2
-                  className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl"
-                  style={{ fontFamily: headlineFont }}
+        <section id="aims" className="flex min-h-[92vh] items-center px-4 py-16 scroll-mt-32">
+          <div className="container grid gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
+            <motion.div {...reveal()} className="space-y-6">
+              <SectionHeader section={pitchDeckSections[2]} headlineFont={headlineFont} />
+              <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-6">
+                <div className="text-xs uppercase tracking-[0.2em] text-white/44">Learning framework</div>
+                <div className="mt-5 grid gap-3">
+                  {[
+                    "Lắng nghe mục tiêu và bối cảnh trước khi gợi ý.",
+                    "Chẩn đoán khoảng trống thay vì liệt kê tri thức chung.",
+                    "Trả về đầu ra hành động: học gì, sửa gì, hỏi gì tiếp.",
+                    "Duy trì vòng phản hồi qua mentor, explore, analyze và history.",
+                  ].map((item, index) => (
+                    <div key={item} className="rounded-[1.5rem] border border-white/10 bg-[#081520]/90 px-4 py-3 text-sm leading-7 text-white/72">
+                      <span className="mr-3 font-semibold text-cyan-100">{index + 1}.</span>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {objectiveCards.map((item, index) => (
+                <motion.div
+                  key={item.title}
+                  {...reveal(0.08 + index * 0.05)}
+                  className="rounded-[1.9rem] border border-white/10 bg-white/[0.05] p-5"
                 >
-                  DUO MIND đồng hành với người học qua ba chặng rõ ràng.
-                </h2>
-                <p className="mt-5 text-base leading-8 text-white/64">
-                  Bạn không chỉ nhận một câu trả lời từ AI. DUO MIND bắt đầu bằng việc hiểu người
-                  học, sau đó chốt hướng học rõ ràng và cuối cùng giữ lại tiến trình để bạn quay
-                  lại đúng điểm đang cần.
-                </p>
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/42">Objective {index + 1}</div>
+                  <div className="mt-3 text-xl font-semibold text-white">{item.title}</div>
+                  <p className="mt-3 text-sm leading-7 text-white/66">{item.detail}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="methodology" className="flex min-h-[92vh] items-center px-4 py-16 scroll-mt-32">
+          <div className="container space-y-8">
+            <motion.div {...reveal()} className="grid gap-6 lg:grid-cols-[0.82fr_1.18fr] lg:items-end">
+              <SectionHeader section={pitchDeckSections[3]} headlineFont={headlineFont} />
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/42">Hệ thống vận hành như thế nào</div>
+                <p className="mt-4 text-base leading-8 text-white/72">{pitchDeckSections[3].thesis}</p>
+              </div>
+            </motion.div>
+
+            <div className="grid gap-4 lg:grid-cols-5">
+              {methodologyFlow.map((item, index) => (
+                <motion.div
+                  key={item.step}
+                  {...reveal(0.06 + index * 0.06)}
+                  className="relative rounded-[2rem] border border-white/10 bg-[#081520]/92 p-5"
+                >
+                  {index < methodologyFlow.length - 1 ? (
+                    <div className="pointer-events-none absolute right-[-1.15rem] top-1/2 hidden h-px w-9 -translate-y-1/2 bg-gradient-to-r from-cyan-200/60 to-transparent lg:block" />
+                  ) : null}
+                  <div className="text-xs uppercase tracking-[0.2em] text-white/42">Step {item.step}</div>
+                  <div className="mt-4 text-xl font-semibold text-white">{item.title}</div>
+                  <p className="mt-3 text-sm leading-7 text-white/66">{item.description}</p>
+                  <div className="mt-5 rounded-[1.4rem] border border-cyan-200/14 bg-cyan-200/[0.08] px-4 py-3 text-sm text-cyan-50/88">
+                    {item.output}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              {systemPrinciples.map((item, index) => (
+                <motion.div
+                  key={item.title}
+                  {...reveal(0.16 + index * 0.04)}
+                  className="rounded-[1.9rem] border border-white/10 bg-white/[0.05] p-5"
+                >
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/42">Principle {index + 1}</div>
+                  <div className="mt-3 text-xl font-semibold text-white">{item.title}</div>
+                  <p className="mt-3 text-sm leading-7 text-white/66">{item.detail}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="results" className="flex min-h-[92vh] items-center px-4 py-16 scroll-mt-32">
+          <div className="container space-y-8">
+            <motion.div {...reveal()} className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-start">
+              <SectionHeader section={pitchDeckSections[4]} headlineFont={headlineFont} />
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/42">Giá trị chứng minh trên sản phẩm</div>
+                <div className="mt-4 grid gap-3">
+                  {productProofPoints.map((item, index) => (
+                    <div key={item} className="rounded-[1.5rem] border border-white/10 bg-[#091925]/88 px-4 py-3 text-sm leading-7 text-white/72">
+                      <span className="mr-3 font-semibold text-cyan-100">{index + 1}.</span>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
+              <div className="grid gap-4 md:grid-cols-2">
+                {resultComparisons.map((group, index) => (
+                  <motion.div
+                    key={group.title}
+                    {...reveal(0.06 + index * 0.05)}
+                    className={`rounded-[2rem] border p-5 ${
+                      index === 0 ? "border-rose-200/14 bg-rose-200/[0.06]" : "border-emerald-200/14 bg-emerald-200/[0.06]"
+                    }`}
+                  >
+                    <div className="text-xs uppercase tracking-[0.2em] text-white/44">
+                      {index === 0 ? "Mô hình cũ" : "Đầu ra của DUO MIND"}
+                    </div>
+                    <div className="mt-3 text-2xl font-semibold text-white">{group.title}</div>
+                    <div className="mt-4 space-y-3">
+                      {group.bullets.map((bullet) => (
+                        <div key={bullet} className="rounded-[1.4rem] border border-white/10 bg-[#081520]/92 px-4 py-3 text-sm leading-7 text-white/70">
+                          {bullet}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                ))}
               </div>
 
-              <div className="grid gap-5 md:grid-cols-3">
-                {journey.map((item, index) => {
+              <div className="grid gap-4">
+                {outputExamples.map((item, index) => {
                   const Icon = item.icon
+
                   return (
                     <motion.div
                       key={item.title}
-                      {...reveal(0.08 + index * 0.08)}
-                      className="relative rounded-[1.8rem] border border-white/10 bg-[#061320]/90 p-5"
+                      {...reveal(0.1 + index * 0.05)}
+                      className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-5"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-xs uppercase tracking-[0.22em] text-white/42">{item.step}</div>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.05] text-cyan-50">
-                          <Icon className="size-4" />
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.18em] text-white/42">Output Example {index + 1}</div>
+                          <div className="mt-3 text-xl font-semibold text-white">{item.title}</div>
+                        </div>
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-cyan-100">
+                          <Icon className="size-5" />
                         </div>
                       </div>
-                      <div className="mt-6 text-2xl font-semibold tracking-[-0.04em] text-white">
-                        {item.title}
-                      </div>
-                      <p className="mt-4 text-sm leading-7 text-white/66">{item.description}</p>
+                      <p className="mt-3 text-sm leading-7 text-white/66">{item.detail}</p>
                     </motion.div>
                   )
                 })}
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  {valueCards.map((item, index) => (
+                    <motion.div
+                      key={item.title}
+                      {...reveal(0.2 + index * 0.04)}
+                      className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-4"
+                    >
+                      <div className="text-xs uppercase tracking-[0.18em] text-white/42">Value {index + 1}</div>
+                      <div className="mt-3 text-lg font-semibold text-white">{item.title}</div>
+                      <p className="mt-3 text-sm leading-7 text-white/66">{item.detail}</p>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
 
-        <section id="launch" className="container px-4 pb-20">
-          <motion.div
-            {...reveal()}
-            className="relative overflow-hidden rounded-[2.8rem] border border-cyan-200/12 bg-[linear-gradient(130deg,rgba(3,17,30,0.96),rgba(8,33,51,0.92))] p-8 sm:p-10"
-          >
-            <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
-              <div className="max-w-3xl">
-                <Badge className="h-auto rounded-full border border-white/10 bg-white/[0.06] px-4 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-white/74">
-                  Sẵn sàng bắt đầu
-                </Badge>
-                <h2
-                  className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl"
-                  style={{ fontFamily: headlineFont }}
-                >
-                  DUO MIND là nơi bạn chốt mục tiêu nghề nghiệp, học đúng thứ đang thiếu và theo
-                  dõi được tiến độ trong một hệ duy nhất.
-                </h2>
-                <p className="mt-5 text-base leading-8 text-white/66">
-                  Đăng ký để hoàn thành onboarding và mở ra flow học tập bám theo role mục tiêu,
-                  gồm Mentor AI, roadmap, Explore, Analyze và history được cá nhân hóa theo chính
-                  bạn.
+        <section id="discussion" className="flex min-h-[92vh] items-center px-4 py-16 scroll-mt-32">
+          <div className="container grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-start">
+            <motion.div {...reveal()} className="space-y-6">
+              <SectionHeader section={pitchDeckSections[5]} headlineFont={headlineFont} />
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/42">Vì sao giải pháp này hợp lý</div>
+                <p className="mt-4 text-base leading-8 text-white/72">
+                  DUO MIND không xem hồ sơ người dùng là câu trả lời cho mọi thứ. Hồ sơ chỉ là lớp bối cảnh.
+                  Phần quan trọng hơn là AI phải biết người học đang cần gì, cần tri thức khách quan hay cần cố vấn,
+                  và từ đó chọn đúng kiểu phản hồi.
                 </p>
+                <div className="mt-5 rounded-[1.6rem] border border-amber-200/14 bg-amber-200/[0.08] p-4 text-sm leading-7 text-white/78">
+                  Giá trị học thuật của hệ thống nằm ở việc tổ chức AI theo vai trò sư phạm và logic quyết định,
+                  thay vì chỉ thêm một lớp giao diện cho chatbot tổng quát.
+                </div>
+              </div>
+            </motion.div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {discussionCards.map((item, index) => (
+                <motion.div
+                  key={item.title}
+                  {...reveal(0.08 + index * 0.05)}
+                  className="rounded-[1.95rem] border border-white/10 bg-[#081520]/92 p-5"
+                >
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/42">Principle {index + 1}</div>
+                  <div className="mt-3 text-xl font-semibold text-white">{item.title}</div>
+                  <p className="mt-3 text-sm leading-7 text-white/66">{item.detail}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="conclusion" className="flex min-h-[92vh] items-center px-4 pb-20 pt-16 scroll-mt-32">
+          <div className="container space-y-8">
+            <motion.div {...reveal()} className="grid gap-6 lg:grid-cols-[0.82fr_1.18fr] lg:items-end">
+              <SectionHeader section={pitchDeckSections[6]} headlineFont={headlineFont} />
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/42">Kết luận</div>
+                <p className="mt-4 text-base leading-8 text-white/72">{pitchDeckSections[6].thesis}</p>
+              </div>
+            </motion.div>
+
+            <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+              <div className="grid gap-4">
+                {conclusionBullets.map((item, index) => (
+                  <motion.div
+                    key={item.title}
+                    {...reveal(0.08 + index * 0.05)}
+                    className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5"
+                  >
+                    <div className="text-xs uppercase tracking-[0.18em] text-white/42">Kết luận {index + 1}</div>
+                    <div className="mt-3 text-xl font-semibold text-white">{item.title}</div>
+                    <p className="mt-3 text-sm leading-7 text-white/66">{item.detail}</p>
+                  </motion.div>
+                ))}
               </div>
 
-              <div className="flex flex-wrap gap-3 lg:justify-end">
-                <Button
-                  asChild
-                  size="lg"
-                  className="h-12 rounded-full bg-[linear-gradient(120deg,#ecfeff_0%,#67e8f9_38%,#7dd3fc_68%,#fde68a_100%)] px-6 text-slate-950 hover:brightness-105"
-                >
-                  <a href={primaryHref}>
-                    {primaryLabel}
-                    <ArrowRight className="ml-2 size-4" />
-                  </a>
-                </Button>
-                <Button
-                  asChild
-                  size="lg"
-                  variant="outline"
-                  className="h-12 rounded-full border-white/12 bg-white/[0.04] px-6 text-white hover:bg-white/[0.08] hover:text-white"
-                >
-                  <a href="#value">Xem lại giá trị</a>
-                </Button>
-              </div>
+              <motion.div
+                {...reveal(0.12)}
+                className="rounded-[2.4rem] border border-cyan-200/14 bg-[linear-gradient(160deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-6"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-cyan-50/78">Demo journey</div>
+                    <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white" style={{ fontFamily: headlineFont }}>
+                      Hành trình người học trên website
+                    </div>
+                  </div>
+                  <Route className="mt-1 size-5 text-cyan-100" />
+                </div>
+
+                <div className="mt-6 grid gap-4">
+                  {demoJourney.map((item, index) => (
+                    <motion.div
+                      key={item.step}
+                      {...reveal(0.18 + index * 0.05, 24)}
+                      className="rounded-[1.8rem] border border-white/10 bg-[#081520]/92 p-4"
+                    >
+                      <div className="flex gap-4">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-sm font-semibold text-cyan-100">
+                          {item.step}
+                        </div>
+                        <div>
+                          <div className="text-lg font-semibold text-white">{item.title}</div>
+                          <p className="mt-2 text-sm leading-7 text-white/68">{item.detail}</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-12 rounded-full bg-[linear-gradient(120deg,#eefbf9_0%,#7dd3fc_34%,#67e8f9_66%,#fde68a_100%)] px-6 text-slate-950 hover:brightness-105"
+                  >
+                    <a href={primaryHref}>
+                      {primaryLabel}
+                      <ArrowRight className="ml-2 size-4" />
+                    </a>
+                  </Button>
+                  <Button
+                    asChild
+                    size="lg"
+                    variant="outline"
+                    className="h-12 rounded-full border-white/14 bg-white/[0.04] px-6 text-white hover:bg-white/[0.08] hover:text-white"
+                  >
+                    <a href={navHref}>
+                      {navLabel}
+                      <ArrowRight className="ml-2 size-4" />
+                    </a>
+                  </Button>
+                </div>
+              </motion.div>
             </div>
-          </motion.div>
+          </div>
         </section>
       </div>
     </main>
+  )
+}
+
+function SectionHeader({
+  section,
+  headlineFont,
+}: {
+  section: PitchDeckSectionMeta
+  headlineFont: string
+}) {
+  return (
+    <div className="space-y-5">
+      <Badge className="h-auto rounded-full border border-white/10 bg-white/[0.05] px-4 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-white/74">
+        {section.posterLabel} • Slide {section.index}
+      </Badge>
+      <h2
+        className="max-w-4xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl"
+        style={{ fontFamily: headlineFont }}
+      >
+        {section.title}
+      </h2>
+      <p className="max-w-3xl text-base leading-8 text-white/68 sm:text-lg">{section.thesis}</p>
+    </div>
   )
 }

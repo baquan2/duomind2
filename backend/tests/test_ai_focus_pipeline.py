@@ -1,8 +1,16 @@
-from app.routers.analyze import _build_analysis_fallback, _extract_analysis_focus, _extract_analysis_goal
+from app.routers.analyze import (
+    _build_analysis_fallback,
+    _detect_analysis_mode,
+    _extract_analysis_focus,
+    _extract_analysis_goal,
+    _should_generate_analysis_blueprint,
+)
 from app.routers.explore import (
     _build_fallback_payload,
     _key_points_need_fallback,
     _normalize_explore_summary,
+    _should_generate_explore_blueprint,
+    _should_lookup_explore_sources,
 )
 from app.routers.quiz import _quiz_questions_need_fallback
 from app.services.mentor_service import (
@@ -10,10 +18,13 @@ from app.services.mentor_service import (
     _build_decision_summary,
     _low_signal,
     _prune_result_for_intent,
+    _sanitize_mentor_result,
     _normalize_items,
     _normalize_list_of_strings,
     build_personalized_fallback,
+    build_suggested_questions,
     detect_mentor_intent,
+    mentor_focus_topic,
 )
 from app.utils.content_blueprint import (
     build_blueprint_fallback,
@@ -35,6 +46,62 @@ def test_extract_analysis_goal_prefers_explicit_goal() -> None:
     result = _extract_analysis_goal(content, "Business Analyst khác Product Analyst ở điểm nào?")
 
     assert result == "Business Analyst khác Product Analyst ở điểm nào?"
+
+
+def test_analyze_auto_routes_question_input_to_deep_dive() -> None:
+    mode = _detect_analysis_mode(
+        "Business Analyst khac Product Analyst o diem nao?",
+        None,
+        None,
+        "auto",
+    )
+
+    assert mode == "deep_dive"
+
+
+def test_analyze_auto_routes_note_dump_to_critique() -> None:
+    mode = _detect_analysis_mode(
+        (
+            "Business Analyst la nguoi lam ro requirement va quy trinh. "
+            "Product Analyst chi lam dashboard. "
+            "BA khong can quan tam den stakeholder."
+        ),
+        "Kiem tra noi dung nay dung hay sai?",
+        None,
+        "auto",
+    )
+
+    assert mode == "critique"
+
+
+def test_deep_dive_short_question_still_generates_analysis_blueprint() -> None:
+    assert (
+        _should_generate_analysis_blueprint(
+            {"analysis_kind": "definition"},
+            "SQL la gi?",
+            "deep_dive",
+        )
+        is True
+    )
+
+
+def test_mentor_low_signal_flags_skill_gap_answer_without_skill_gaps() -> None:
+    assert (
+        _low_signal(
+            "Voi muc tieu Data Analyst, day la mot khai niem can duoc hieu theo pham vi ap dung va co che van hanh cu the.",
+            "Voi muc tieu Data Analyst, toi dang thieu nhung ky nang nao quan trong nhat?",
+            {"target_role": "Data Analyst"},
+            {
+                "skill_gaps": [],
+                "recommended_learning_steps": [],
+                "decision_summary": {
+                    "headline": "Day la y chinh can giu.",
+                    "priority_value": "chu de hien tai",
+                },
+            },
+        )
+        is True
+    )
 
 
 def test_build_prompt_learning_context_filters_unknown_values() -> None:
@@ -182,6 +249,20 @@ def test_explore_key_points_need_fallback_for_generic_output() -> None:
         "Business Analyst khac Product Analyst o diem nao?",
         "Business Analyst va Product Analyst",
         weak_points,
+    )
+
+
+def test_short_explore_question_still_requests_sources() -> None:
+    assert _should_lookup_explore_sources({"question_type": "definition"}, "SQL la gi?") is True
+
+
+def test_short_explore_question_still_generates_blueprint() -> None:
+    assert (
+        _should_generate_explore_blueprint(
+            {"question_type": "comparison"},
+            "Business Analyst khac Product Analyst o diem nao?",
+        )
+        is True
     )
 
 
@@ -642,6 +723,52 @@ def test_direct_knowledge_question_maps_to_general_guidance() -> None:
     assert detect_mentor_intent("Business Analyst khac Product Analyst o diem nao?") == "general_guidance"
 
 
+def test_personalized_skill_gap_question_maps_to_skill_gap() -> None:
+    intent = detect_mentor_intent(
+        "Voi muc tieu Data Analyst, toi dang thieu nhung ky nang nao quan trong nhat?"
+    )
+
+    assert intent == "skill_gap"
+
+
+def test_personalized_skill_gap_focus_topic_extracts_target_role() -> None:
+    focus_topic = mentor_focus_topic(
+        "Voi muc tieu Data Analyst, toi dang thieu nhung ky nang nao quan trong nhat?"
+    )
+
+    assert focus_topic == "Data Analyst"
+
+
+def test_general_mentor_question_does_not_force_profile_context() -> None:
+    result = build_personalized_fallback(
+        profile={"full_name": "Test User"},
+        onboarding={
+            "target_role": "Data Analyst",
+            "current_focus": "SQL",
+        },
+        intent="general_guidance",
+        message="TCP 3-way handshake hoạt động thế nào?",
+        market_signals=[],
+        web_research=[],
+    )
+
+    current_question = result["request_payload"]["current_question"]
+    assert current_question["use_profile_context"] is True
+    assert result["context_snapshot"]["context_policy"] == "personalized_by_default_but_question_first"
+    assert result["generation_trace"]["context_usage"]["ignored_fields"]
+
+
+def test_mentor_suggested_questions_are_open_domain_first() -> None:
+    suggestions = build_suggested_questions(
+        {"full_name": "Test User"},
+        {"target_role": "Data Analyst"},
+    )
+
+    joined = " ".join(suggestions)
+    assert "TCP 3-way handshake" in joined or "Business Analyst" in joined
+    assert "Data Analyst" not in suggestions[0]
+
+
 def test_general_guidance_fallback_keeps_knowledge_answer_shape() -> None:
     result = build_personalized_fallback(
         profile=None,
@@ -680,4 +807,58 @@ def test_general_guidance_answer_matching_question_is_not_low_signal() -> None:
             },
         )
         is False
+    )
+
+
+def test_mentor_low_signal_flags_off_target_career_paths() -> None:
+    assert (
+        _low_signal(
+            "Data Analyst la huong phu hop nhat cho ban luc nay.",
+            "Toi hop voi huong Business Analyst khong?",
+            {"target_role": "Business Analyst"},
+            {
+                "career_paths": [{"role": "Data Analyst"}],
+                "decision_summary": {
+                    "headline": "Nen uu tien Data Analyst truoc.",
+                },
+            },
+        )
+        is True
+    )
+
+
+def test_sanitize_mentor_result_only_keeps_model_selected_sources() -> None:
+    result = _sanitize_mentor_result(
+        {
+            "answer": "SQL la ngon ngu truy van du lieu co cau truc.",
+            "sources": [],
+        },
+        intent="general_guidance",
+        message="SQL la gi?",
+        onboarding=None,
+        allowed_sources=[
+            {
+                "label": "Example source",
+                "url": "https://example.com/sql",
+                "snippet": "SQL definition",
+            }
+        ],
+    )
+
+    assert result["sources"] == []
+
+
+def test_mentor_low_signal_flags_off_topic_knowledge_answer() -> None:
+    assert (
+        _low_signal(
+            "Đây là một chủ đề quan trọng trong nhiều bối cảnh và thường cần nhìn ở góc rộng hơn.",
+            "SQL la gi?",
+            {"target_role": "Business Analyst"},
+            {
+                "decision_summary": {
+                    "headline": "Can nhin chu de theo nhieu goc do.",
+                }
+            },
+        )
+        is True
     )

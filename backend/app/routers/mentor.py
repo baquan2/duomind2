@@ -25,31 +25,6 @@ from app.utils.helpers import normalize_text
 router = APIRouter()
 
 
-def _prepend_target_role_questions(
-    questions: list[str],
-    onboarding: dict | None,
-) -> list[str]:
-    target_role = normalize_text(str((onboarding or {}).get("target_role") or ""))
-    if not target_role:
-        return questions
-
-    priority_questions = [
-        f"Để tiến gần tới vai trò {target_role}, tôi nên ưu tiên học gì trong 30 ngày tới?",
-        f"Với mục tiêu {target_role}, tôi đang thiếu những kỹ năng nào quan trọng nhất?",
-    ]
-
-    merged: list[str] = []
-    seen: set[str] = set()
-    for question in priority_questions + questions:
-        cleaned = normalize_text(question)
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            merged.append(question)
-        if len(merged) >= 6:
-            break
-    return merged
-
-
 def _map_thread(thread: dict) -> MentorThreadSummary:
     return MentorThreadSummary(
         id=str(thread.get("id")),
@@ -68,8 +43,13 @@ def _map_message(message: dict) -> MentorMessageItem:
         role=str(message.get("role") or "assistant"),
         intent=message.get("intent"),
         content=str(message.get("content") or ""),
+        answer_mode=message.get("answer_mode"),
         response_data=message.get("response_data"),
         sources=message.get("sources") or [],
+        related_materials=message.get("related_materials") or [],
+        request_payload=message.get("request_payload"),
+        context_snapshot=message.get("context_snapshot"),
+        generation_trace=message.get("generation_trace"),
         created_at=message.get("created_at"),
     )
 
@@ -139,7 +119,7 @@ async def get_suggested_questions(
     profile = svc.get_profile(current_user["id"])
     onboarding = svc.get_onboarding(current_user["id"])
     return MentorSuggestedQuestionsResponse(
-        questions=_prepend_target_role_questions(build_suggested_questions(profile, onboarding), onboarding)
+        questions=build_suggested_questions(profile, onboarding)
     )
 
 
@@ -157,7 +137,6 @@ async def mentor_chat(
         avatar_url=current_user.get("avatar_url"),
     )
     onboarding = svc.get_onboarding(current_user["id"])
-    thread = None
 
     if request.thread_id:
         thread = svc.get_mentor_thread(request.thread_id, current_user["id"])
@@ -183,7 +162,10 @@ async def mentor_chat(
         thread_id=thread_id,
         user_id=current_user["id"],
         role="user",
-        content=normalize_text(request.message),
+        content=request.message,
+        request_payload={
+            "normalized_message": normalize_text(request.message),
+        },
     )
     if not user_message:
         raise HTTPException(
@@ -207,6 +189,7 @@ async def mentor_chat(
             onboarding=onboarding,
             intent=detect_mentor_intent(request.message),
             message=request.message,
+            recent_messages=existing_messages + [user_message],
         )
 
     try:
@@ -218,31 +201,25 @@ async def mentor_chat(
             intent=mentor_result["intent"],
             response_data=mentor_result,
             sources=mentor_result["sources"],
+            related_materials=mentor_result.get("related_materials"),
+            answer_mode=mentor_result.get("answer_mode"),
+            request_payload=mentor_result.get("request_payload"),
+            context_snapshot=mentor_result.get("context_snapshot"),
+            generation_trace=mentor_result.get("generation_trace"),
+            memory_updates=mentor_result.get("memory_updates"),
         )
     except Exception as exc:
         print(f"[mentor] Failed to persist rich assistant message: {exc}")
-        try:
-            assistant_message = svc.create_mentor_message(
-                thread_id=thread_id,
-                user_id=current_user["id"],
-                role="assistant",
-                content=mentor_result["answer"],
-                intent=mentor_result["intent"],
-                response_data=None,
-                sources=[],
-            )
-        except Exception as fallback_exc:
-            print(f"[mentor] Failed to persist lean assistant message: {fallback_exc}")
-            assistant_message = {
-                "id": "__assistant_fallback__",
-                "thread_id": thread_id,
-                "role": "assistant",
-                "intent": mentor_result["intent"],
-                "content": mentor_result["answer"],
-                "response_data": mentor_result,
-                "sources": mentor_result["sources"],
-                "created_at": None,
-            }
+        assistant_message = svc.create_mentor_message(
+            thread_id=thread_id,
+            user_id=current_user["id"],
+            role="assistant",
+            content=mentor_result["answer"],
+            intent=mentor_result["intent"],
+            response_data=mentor_result,
+            sources=mentor_result["sources"],
+        )
+
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -277,6 +254,7 @@ async def mentor_chat(
         message_id=str(assistant_message["id"]),
         intent=mentor_result["intent"],
         answer=mentor_result["answer"],
+        answer_mode=mentor_result.get("answer_mode"),
         career_paths=mentor_result["career_paths"],
         market_signals=mentor_result["market_signals"],
         skill_gaps=mentor_result["skill_gaps"],
@@ -284,5 +262,10 @@ async def mentor_chat(
         recommended_learning_steps=mentor_result["recommended_learning_steps"],
         suggested_followups=mentor_result["suggested_followups"],
         sources=mentor_result["sources"],
+        related_materials=mentor_result.get("related_materials") or [],
+        request_payload=mentor_result.get("request_payload"),
+        context_snapshot=mentor_result.get("context_snapshot"),
+        generation_trace=mentor_result.get("generation_trace"),
+        save_metadata=assistant_message.get("_save_metadata"),
         messages=[_map_message(message) for message in messages],
     )

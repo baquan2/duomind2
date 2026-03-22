@@ -89,6 +89,9 @@ USER_ANALYSIS_GOAL:
 FOCUS_TOPIC_CANDIDATE:
 {focus_topic}
 
+ANALYSIS_MODE:
+{analysis_mode}
+
 CONTENT TO ANALYZE:
 \"\"\"
 {content}
@@ -97,10 +100,12 @@ CONTENT TO ANALYZE:
 RULES:
 1. Identify the single main question the learner wants checked.
 2. Keep only one central focus topic.
-3. If the learner is comparing two things, preserve both targets exactly.
-4. If the learner asks "gom gi", "bao gom gi", "thanh phan nao", or "cau truc ra sao", set analysis_kind to "structure".
-5. Extract 2 to 4 evidence targets that should be checked in the content.
-6. Do not write the final analysis here.
+3. If ANALYSIS_MODE is "deep_dive", treat CONTENT TO ANALYZE as the topic/question to unpack deeply, not as an answer to grade.
+4. If ANALYSIS_MODE is "critique", treat CONTENT TO ANALYZE as learner-submitted material that needs checking.
+5. If the learner is comparing two things, preserve both targets exactly.
+6. If the learner asks "gom gi", "bao gom gi", "thanh phan nao", or "cau truc ra sao", set analysis_kind to "structure".
+7. Extract 2 to 4 evidence targets that should be checked in the content.
+8. Do not write the final analysis here.
 
 JSON SHAPE:
 {{
@@ -124,6 +129,7 @@ Return ONLY valid JSON.
 LANGUAGE: {language}
 USER_ANALYSIS_GOAL: {analysis_goal}
 FOCUS_TOPIC: {focus_topic}
+ANALYSIS_MODE: {analysis_mode}
 ANALYSIS_BRIEF:
 {analysis_brief_json}
 VERIFICATION_SOURCES:
@@ -138,6 +144,8 @@ MISSION:
 1. Identify the corrected knowledge the learner should keep after this analysis.
 2. Build a blueprint with non-overlapping knowledge axes.
 3. Keep the blueprint tightly centered on FOCUS_TOPIC and the learner's actual question.
+4. If ANALYSIS_MODE is "deep_dive", build the blueprint as a dense teaching map, not as a correction checklist.
+5. If ANALYSIS_MODE is "critique", keep the blueprint grounded in what should be repaired from the submitted content.
 
 RULES:
 1. Do not write the final explanation yet.
@@ -172,6 +180,7 @@ Return ONLY valid JSON.
 LANGUAGE: {language}
 USER_ANALYSIS_GOAL: {analysis_goal}
 FOCUS_TOPIC: {focus_topic}
+ANALYSIS_MODE: {analysis_mode}
 LEARNER_CONTEXT:
 {learner_context_json}
 ANALYSIS_BRIEF:
@@ -186,6 +195,12 @@ IMPORTANT CONTEXT RULE:
 - Use it only when it materially improves clarity, framing, or example choice.
 - If it distracts from USER_ANALYSIS_GOAL or from the submitted content, ignore it.
 - Prioritize a direct expert answer over personalization.
+- All final JSON string values must be natural Vietnamese with full diacritics.
+- Never transliterate Vietnamese into ASCII forms like "toi", "khong", or "chu de".
+
+MODE RULE:
+- If ANALYSIS_MODE is "deep_dive", answer narrowly and rigorously; do not score or judge the learner's correctness, and corrections should usually be empty.
+- If ANALYSIS_MODE is "critique", judge the submitted content directly and keep correction behavior enabled.
 
 QUESTION-FRAME PRIORITY:
 - If USER_ANALYSIS_GOAL asks "la gi", correct the definition and scope before broader explanation.
@@ -218,6 +233,9 @@ GUARDRAILS:
 6. Never invent citations or output URLs.
 7. Every bullet and section must teach a real idea, not a learning tip or motivational sentence.
 8. Prefer concrete nouns, mechanisms, criteria, parts, limits, and confusion points over abstract filler.
+9. In critique mode, anchor the analysis to the learner's actual claims from CONTENT TO ANALYZE instead of drifting into a detached lesson.
+10. In deep_dive mode, resolve the submitted question directly and rigorously instead of grading it.
+11. Write clean Vietnamese with proper dấu in every user-facing field.
 
 OUTPUT CONTRACT:
 - title: short and core to the topic
@@ -238,7 +256,11 @@ OUTPUT CONTRACT:
 - key_points bullet 5 when present: practical implication or misconception worth remembering
 - key_points must be theory-heavy and non-overlapping with summary; avoid verdict language inside key_points
 - corrections: at most 4 items, only when the submitted content contains a specific weak or wrong claim
+- in critique mode, each corrections.original must quote or closely mirror a concrete claim from CONTENT TO ANALYZE
+- in critique mode, if the learner did not make a concrete claim on a point, do not invent a correction for that point
+- if ANALYSIS_MODE is "deep_dive", accuracy_assessment should usually be "unverifiable" and corrections should usually be []
 - every detailed section must be grounded in CONTENT_BLUEPRINT and have a distinct role
+- if USER_ANALYSIS_GOAL is a definition question, summary bullet 1, key_points bullet 1, and the first sentence of detailed_sections.core_concept must open with a direct definition of FOCUS_TOPIC instead of meta commentary
 - detailed_sections.core_concept must explicitly answer "topic nay la gi"
 - detailed_sections.mechanism must include at least two of: mechanism, logic, input-process-output, limits
 - if USER_ANALYSIS_GOAL asks about structure or components, detailed_sections.components_and_relationships must name the main parts before discussing applications
@@ -247,6 +269,8 @@ OUTPUT CONTRACT:
 - detailed_sections.core_concept should open with a direct answer, then draw the scope boundary
 - detailed_sections.mechanism should explain a causal chain, operating logic, or input-process-output flow
 - detailed_sections.components_and_relationships should explicitly name parts, criteria, or comparison axes before deeper explanation
+- in critique mode, summary bullet 1 must judge the submitted content itself, not introduce the topic generically
+- if VERIFICATION_SOURCES is not empty, the analysis should read as more grounded and more specific than a source-free answer even though URLs stay outside the prose
 
 JSON SHAPE:
 {{
@@ -292,6 +316,7 @@ Return ONLY valid JSON.
 LANGUAGE: {language}
 USER_ANALYSIS_GOAL: {analysis_goal}
 FOCUS_TOPIC: {focus_topic}
+ANALYSIS_MODE: {analysis_mode}
 LEARNER_CONTEXT:
 {learner_context_json}
 ANALYSIS_BRIEF:
@@ -312,6 +337,7 @@ MISSION:
 1. Judge the learner's submitted content directly and intelligently.
 2. Keep the analysis tightly centered on USER_ANALYSIS_GOAL.
 3. Repair filler, drift, repetition, weak verdicts, and weak section roles.
+4. If ANALYSIS_MODE is "deep_dive", rewrite as a narrow deep explanation and keep critique language minimal.
 
 QUESTION-FRAME RULES:
 - Definition analysis: correct the definition first, then scope, then confusion points.
@@ -325,9 +351,12 @@ GUARDRAILS:
 2. Do not write filler such as "this is important", "helps understand better", or "in many fields".
 3. Do not repeat the same idea across summary, key points, and sections.
 4. Corrections must only target claims that are actually present in CONTENT TO ANALYZE.
-5. Use LEARNER_CONTEXT only if it improves the example. Never let it hijack the answer.
-6. Never invent citations or URLs inside the explanation.
-7. Every bullet and section must carry concrete knowledge, not study advice or generic observations.
+5. In critique mode, stay anchored to the learner's actual claims instead of drifting into a detached generic lesson.
+6. Use LEARNER_CONTEXT only if it improves the example. Never let it hijack the answer.
+7. Never invent citations or URLs inside the explanation.
+8. If VERIFICATION_SOURCES is not empty, silently use them to make the rewrite more concrete and less generic.
+9. Every bullet and section must carry concrete knowledge, not study advice or generic observations.
+10. Write clean Vietnamese with proper dấu in every user-facing field.
 
 OUTPUT CONTRACT:
 - title: short and direct
@@ -341,11 +370,16 @@ OUTPUT CONTRACT:
 - summary bullet 4: what corrected knowledge the learner should keep
 - each summary bullet should contain a concrete claim, boundary, mechanism, or criterion
 - corrections: at most 4 items
+- in critique mode, each corrections.original must quote or closely mirror a concrete claim from CONTENT TO ANALYZE
+- in critique mode, if the learner did not make a concrete claim on a point, do not invent a correction for that point
+- if ANALYSIS_MODE is "deep_dive", corrections should usually be [] and the answer should read like a deep explanation, not a grading note
 - key_points must be dense corrected theory bullets, not a softer paraphrase of summary
+- if USER_ANALYSIS_GOAL is a definition question, summary bullet 1, key_points bullet 1, and the first sentence of core_concept must be the corrected direct definition of FOCUS_TOPIC
 - core_concept first sentence must answer the real question being checked
 - components_and_relationships must name the main parts when USER_ANALYSIS_GOAL asks about structure or components
 - mechanism must explain the operating logic or causal chain, not just reword the concept
 - next_step_self_study must point to a deeper boundary, not generic encouragement
+- in critique mode, summary bullet 1 must judge the submitted content itself, not introduce the topic generically
 
 JSON SHAPE:
 {{
@@ -453,6 +487,8 @@ IMPORTANT CONTEXT RULE:
 - Use it only when it makes the explanation clearer or the example more relevant.
 - If it bends the answer away from the real question, ignore it.
 - Prefer a direct expert explanation over personalization.
+- All final JSON string values must be natural Vietnamese with full diacritics.
+- Never transliterate Vietnamese into ASCII forms like "toi", "khong", or "chu de".
 
 QUESTION-FRAME PRIORITY:
 - If the learner asks "la gi", answer the definition and scope before any broad overview.
@@ -477,6 +513,9 @@ GUARDRAILS:
 4. If a section becomes repetitive, narrow it to a more specific role.
 5. Do not answer with a generic field overview when the learner asked one concrete question.
 6. Never output citations or URLs inside the explanation.
+7. If VERIFICATION_SOURCES is not empty, silently use them to make the explanation more concrete and less generic.
+8. Avoid vague phrasing like "can nam ban chat", "day la chu de quan trong", or "giup hieu ro hon" unless it is followed by a concrete mechanism, boundary, or criterion.
+9. Write clean Vietnamese with proper dấu in every user-facing field.
 
 OUTPUT CONTRACT:
 - title: short, direct, not a question
@@ -493,6 +532,7 @@ OUTPUT CONTRACT:
 - key_points bullet 5 when present: memorable misconception or decision value
 - topic_tags: 3 to 4 concrete tags
 - detailed_sections must contain the 7 section keys above
+- if the learner asks a definition question, summary bullet 1, key_points bullet 1, and the first sentence of core_concept must start with the direct definition of FOCUS_TOPIC, not with background or motivation
 - core_concept must directly answer the learner's question in the first sentence
 - mechanism must explain logic and at least one cause-effect or input-process-output chain
 - components_and_relationships must explain structure, criteria, or comparison axes
@@ -500,6 +540,7 @@ OUTPUT CONTRACT:
 - common_misconceptions must include at least one misunderstanding or misuse case
 - next_step_self_study must point to a deeper boundary, not generic study advice
 - never ask the learner to provide more context
+- if VERIFICATION_SOURCES is not empty, the answer should feel better grounded than a source-free overview even though URLs stay outside the generated prose
 
 JSON SHAPE:
 {{
@@ -568,6 +609,8 @@ GUARDRAILS:
 4. Every section must contribute a distinct knowledge angle.
 5. Use LEARNER_CONTEXT only if it improves the example. Never let it hijack the answer.
 6. Never output citations or URLs inside the explanation.
+7. If VERIFICATION_SOURCES is not empty, silently use them to make the rewritten answer more concrete and less generic.
+8. Write clean Vietnamese with proper dấu in every user-facing field.
 
 OUTPUT CONTRACT:
 - title: short, direct, not a question
@@ -577,6 +620,7 @@ OUTPUT CONTRACT:
 - summary bullet 2: scope boundary or what should not be confused
 - summary bullet 3: mechanism, structure, or comparison axis
 - summary bullet 4: application, condition, or misconception
+- if the learner asks a definition question, summary bullet 1, key_points bullet 1, and the first sentence of core_concept must be the direct definition of FOCUS_TOPIC
 - core_concept first sentence must answer the question directly
 - components_and_relationships must name the main parts when the learner asks about components or structure
 - next_step_self_study must point to a deeper boundary, not generic encouragement
@@ -618,12 +662,14 @@ def build_analyze_blueprint_prompt(
     focus_topic: str,
     analysis_brief: dict[str, Any],
     source_brief: dict[str, Any],
+    analysis_mode: str = "critique",
 ) -> str:
     return ANALYZE_CONTENT_BLUEPRINT_PROMPT.format(
         content=content,
         language=language,
         analysis_goal=analysis_goal,
         focus_topic=focus_topic,
+        analysis_mode=analysis_mode,
         analysis_brief_json=_json_block(analysis_brief),
         source_brief_json=_json_block(source_brief),
     )
@@ -638,11 +684,13 @@ def build_analyze_query_plan_prompt(
     analysis_goal: str,
     focus_topic: str,
     content: str,
+    analysis_mode: str = "critique",
 ) -> str:
     return ANALYZE_QUERY_PLAN_PROMPT.format(
         analysis_goal=analysis_goal,
         focus_topic=focus_topic,
         content=content,
+        analysis_mode=analysis_mode,
     )
 
 
@@ -656,12 +704,14 @@ def build_analyze_core_prompt(
     analysis_brief: dict[str, Any],
     source_brief: dict[str, Any],
     content_blueprint: dict[str, Any],
+    analysis_mode: str = "critique",
 ) -> str:
     return ANALYZE_CONTENT_CORE_PROMPT.format(
         content=content,
         language=language,
         analysis_goal=analysis_goal,
         focus_topic=focus_topic,
+        analysis_mode=analysis_mode,
         learner_context_json=_json_block(learner_context),
         analysis_brief_json=_json_block(analysis_brief),
         source_brief_json=_json_block(source_brief),
@@ -680,12 +730,14 @@ def build_analyze_repair_prompt(
     source_brief: dict[str, Any],
     content_blueprint: dict[str, Any],
     weak_draft: dict[str, Any],
+    analysis_mode: str = "critique",
 ) -> str:
     return ANALYZE_CONTENT_REPAIR_PROMPT.format(
         content=content,
         language=language,
         analysis_goal=analysis_goal,
         focus_topic=focus_topic,
+        analysis_mode=analysis_mode,
         learner_context_json=_json_block(learner_context),
         analysis_brief_json=_json_block(analysis_brief),
         source_brief_json=_json_block(source_brief),

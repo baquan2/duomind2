@@ -5,11 +5,13 @@ import { ExternalLink, Link2, ShieldCheck } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import type { SourceReference } from "@/types"
 
+
 interface SourcesPanelProps {
   sources: SourceReference[]
   title?: string
   description?: string
 }
+
 
 function getHostname(url: string) {
   try {
@@ -19,9 +21,10 @@ function getHostname(url: string) {
   }
 }
 
+
 export function SourcesPanel({
   sources,
-  title = "Nguồn xác minh",
+  title = "Nguồn đã dùng",
   description = "Các liên kết này là nguồn tham chiếu để kiểm tra lại thông tin và giữ câu trả lời bám dữ kiện.",
 }: SourcesPanelProps) {
   if (!sources.length) {

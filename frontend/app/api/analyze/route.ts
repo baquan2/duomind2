@@ -17,6 +17,18 @@ function buildBackendUnavailableResponse(error: unknown) {
   )
 }
 
+async function parseBackendResponse(response: Response) {
+  const text = await response.text()
+
+  try {
+    return text ? JSON.parse(text) : {}
+  } catch {
+    return {
+      detail: text || "Không thể phân tích nội dung lúc này.",
+    }
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const payload = await request.json()
@@ -42,15 +54,7 @@ export async function POST(request: Request) {
       cache: "no-store",
     })
 
-    const text = await response.text()
-    let data: unknown = null
-
-    try {
-      data = text ? JSON.parse(text) : null
-    } catch {
-      data = { detail: text || "Không thể phân tích nội dung lúc này." }
-    }
-
+    const data = await parseBackendResponse(response)
     return NextResponse.json(data, { status: response.status })
   } catch (error) {
     return buildBackendUnavailableResponse(error)

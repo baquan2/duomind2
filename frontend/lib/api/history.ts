@@ -1,16 +1,13 @@
 import type {
   KnowledgeReport,
-  LearningSession,
+  SessionListResponse,
   SessionDetailResponse,
 } from "@/types"
 
 import apiClient from "./client"
 
 export async function getSessions(limit = 20, offset = 0) {
-  const { data } = await apiClient.get<{
-    sessions: LearningSession[]
-    total: number
-  }>("/api/history/sessions", {
+  const { data } = await apiClient.get<SessionListResponse>("/api/history/sessions", {
     params: { limit, offset },
   })
 

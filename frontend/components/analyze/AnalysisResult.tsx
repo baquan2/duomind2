@@ -18,6 +18,7 @@ import { KnowledgeDetail } from "@/components/explore/KnowledgeDetail"
 import { MindMapViewer } from "@/components/mindmap/MindMapViewer"
 import { QuizContainer } from "@/components/quiz/QuizContainer"
 import { SourcesPanel } from "@/components/shared/SourcesPanel"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { getReadableGeneratedTitle } from "@/lib/generated-content"
@@ -30,7 +31,8 @@ interface AnalysisResultProps {
 const QUICK_LINKS = [
   { href: "#kien-thuc-dung", label: "Kiến thức đúng" },
   { href: "#tong-quan", label: "Tổng quan" },
-  { href: "#nguon-xac-minh", label: "Nguồn" },
+  { href: "#nguon-xac-minh", label: "Nguồn đã dùng" },
+  { href: "#tai-lieu-lien-quan", label: "Tài liệu liên quan" },
   { href: "#dinh-chinh", label: "Đính chính" },
   { href: "#mind-map", label: "Mind map" },
   { href: "#on-tap", label: "Ôn tập" },
@@ -39,15 +41,27 @@ const QUICK_LINKS = [
 export function AnalysisResult({ result }: AnalysisResultProps) {
   const sourceLabel = result.source_label || "Nội dung nhập tay"
   const hasSources = result.sources.length > 0
+  const hasRelated = result.related_materials.length > 0
   const displayTitle = getReadableGeneratedTitle(
     result.title,
     result.knowledge_detail_data?.title,
     result.input_preview,
     result.summary
   )
-  const links = hasSources
-    ? QUICK_LINKS
-    : QUICK_LINKS.filter((link) => link.href !== "#nguon-xac-minh")
+  const hasSavedSession = Boolean(result.session_id)
+  const saveStatus = result.save_metadata?.status ?? "full"
+  const links = QUICK_LINKS.filter((link) => {
+    if (link.href === "#nguon-xac-minh" && !hasSources) {
+      return false
+    }
+    if (link.href === "#tai-lieu-lien-quan" && !hasRelated) {
+      return false
+    }
+    if (link.href === "#on-tap" && !hasSavedSession) {
+      return false
+    }
+    return true
+  })
   const highlightedSources = result.sources.slice(0, 3)
 
   return (
@@ -57,6 +71,16 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
       transition={{ duration: 0.28, ease: "easeOut" }}
       className="space-y-5"
     >
+      {saveStatus !== "full" ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {saveStatus === "failed"
+              ? "AI đã phân tích xong nhưng chưa lưu được phiên vào database. Bạn vẫn có thể đọc kết quả bên dưới, nhưng quiz và lịch sử sẽ chưa hoạt động cho phiên này."
+              : "Phiên đã được lưu một phần. Một số dữ liệu mở rộng có thể chưa hiển thị đầy đủ trong lịch sử."}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="rounded-[2rem] border border-border/70 bg-[linear-gradient(135deg,_rgba(15,118,110,0.08),_rgba(255,247,221,0.78))] p-6 shadow-sm shadow-primary/10">
         <div className="space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-primary">
@@ -65,9 +89,7 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
           </div>
 
           <div className="space-y-3">
-            <h2 className="font-display text-3xl font-semibold text-balance">
-              {displayTitle}
-            </h2>
+            <h2 className="font-display text-3xl font-semibold text-balance">{displayTitle}</h2>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="bg-background/85">
                 <FileText className="mr-1 size-3.5" />
@@ -78,6 +100,11 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
                   Đã đối chiếu {result.sources.length} nguồn web
                 </Badge>
               ) : null}
+              {!hasSavedSession ? (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700">
+                  Chưa lưu được phiên
+                </Badge>
+              ) : null}
             </div>
           </div>
 
@@ -86,9 +113,7 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 Nội dung đầu vào
               </p>
-              <p className="mt-2 text-sm leading-6 text-foreground/80">
-                {result.input_preview}
-              </p>
+              <p className="mt-2 text-sm leading-6 text-foreground/80">{result.input_preview}</p>
             </div>
           ) : null}
 
@@ -131,7 +156,7 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
         </div>
       </div>
 
-      <section id="tong-quan" className="space-y-4 scroll-mt-24">
+      <section id="tong-quan" className="scroll-mt-24 space-y-4">
         <SectionTitle
           icon={<Target className="size-5 text-primary" />}
           title="Tổng quan và điểm chính"
@@ -144,31 +169,46 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
         />
       </section>
 
-      <section id="kien-thuc-dung" className="space-y-4 scroll-mt-24">
+      <section id="kien-thuc-dung" className="scroll-mt-24 space-y-4">
         <SectionTitle
           icon={<BookOpenCheck className="size-5 text-primary" />}
           title="Kiến thức đúng cần nắm"
-          description="Phần này trình bày lại chủ đề theo đúng trục khái niệm, cơ chế, ví dụ và ứng dụng để bạn hiểu đúng sau khi xem phần đánh giá."
+          description="Phần này trình bày lại chủ đề theo đúng trục khái niệm, cơ chế, ví dụ và ứng dụng."
         />
         <KnowledgeDetail data={result.knowledge_detail_data} />
       </section>
 
       {hasSources ? (
-        <section id="nguon-xac-minh" className="space-y-4 scroll-mt-24">
+        <section id="nguon-xac-minh" className="scroll-mt-24 space-y-4">
           <SectionTitle
             icon={<BookOpenCheck className="size-5 text-primary" />}
-            title="Nguồn xác minh"
-            description="Các nguồn này được dùng để kiểm tra lại tính đúng sai của nội dung và giảm việc model trả lời theo trí nhớ mơ hồ."
+            title="Nguồn đã dùng"
+            description="Các nguồn này được dùng để kiểm tra lại nhận định trong phần phân tích."
           />
           <SourcesPanel
             sources={result.sources}
-            title="Nguồn tham khảo"
-            description="Mỗi nguồn đều mở trực tiếp ra trang web hoặc bài viết liên quan để bạn kiểm tra lại nội dung phân tích."
+            title="Nguồn đã dùng"
+            description="Bạn có thể mở từng nguồn để kiểm tra lại phần giải thích hoặc kết luận."
           />
         </section>
       ) : null}
 
-      <section id="dinh-chinh" className="space-y-4 scroll-mt-24">
+      {hasRelated ? (
+        <section id="tai-lieu-lien-quan" className="scroll-mt-24 space-y-4">
+          <SectionTitle
+            icon={<BookOpenCheck className="size-5 text-primary" />}
+            title="Tài liệu liên quan"
+            description="Các tài liệu này phù hợp để đọc sâu thêm sau khi bạn đã hiểu phần phân tích chính."
+          />
+          <SourcesPanel
+            sources={result.related_materials}
+            title="Tài liệu nên xem thêm"
+            description="Đây là các tài liệu mở rộng tốt cho chủ đề hiện tại."
+          />
+        </section>
+      ) : null}
+
+      <section id="dinh-chinh" className="scroll-mt-24 space-y-4">
         <SectionTitle
           icon={<TriangleAlert className="size-5 text-primary" />}
           title="Điểm cần đính chính"
@@ -202,18 +242,14 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
                         <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                           Nội dung gốc
                         </p>
-                        <p className="text-sm text-rose-700 line-through">
-                          {correction.original}
-                        </p>
+                        <p className="text-sm text-rose-700 line-through">{correction.original}</p>
                       </div>
 
                       <div className="space-y-1">
                         <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                           Gợi ý sửa
                         </p>
-                        <p className="font-medium text-emerald-700">
-                          {correction.correction}
-                        </p>
+                        <p className="font-medium text-emerald-700">{correction.correction}</p>
                       </div>
 
                       <div className="space-y-1">
@@ -233,7 +269,7 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
         )}
       </section>
 
-      <section id="mind-map" className="space-y-4 scroll-mt-24">
+      <section id="mind-map" className="scroll-mt-24 space-y-4">
         <SectionTitle
           icon={<Network className="size-5 text-primary" />}
           title="Mind map"
@@ -242,11 +278,11 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
         <MindMapViewer sessionId={result.session_id} initialData={result.mindmap_data} />
       </section>
 
-      <section id="on-tap" className="space-y-4 scroll-mt-24">
+      <section id="on-tap" className="scroll-mt-24 space-y-4">
         <SectionTitle
           icon={<BookOpenCheck className="size-5 text-primary" />}
           title="Ôn tập ngay"
-          description="Tạo quiz từ chính nội dung vừa phân tích để kiểm tra mức độ hiểu bài trong cùng phiên."
+          description="Tạo quiz từ chính nội dung vừa phân tích để kiểm tra mức độ hiểu bài."
         />
         <QuizContainer sessionId={result.session_id} />
       </section>

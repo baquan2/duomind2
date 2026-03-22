@@ -4,19 +4,14 @@ import { FileUp, Type, Upload, Wand2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import type { AnalyzeMode } from "@/lib/api/analyze"
 import { cn } from "@/lib/utils"
 
 interface ContentInputProps {
-  onSubmitText: (content: string, analysisGoal?: string) => void | Promise<void>
-  onSubmitFile: (file: File, analysisGoal?: string) => void | Promise<void>
+  onSubmitText: (content: string, analysisGoal?: string, mode?: AnalyzeMode) => void | Promise<void>
+  onSubmitFile: (file: File, analysisGoal?: string, mode?: AnalyzeMode) => void | Promise<void>
   loading: boolean
   initialContent?: string
 }
@@ -36,6 +31,7 @@ export function ContentInput({
   const [mode, setMode] = useState<InputMode>("text")
   const [content, setContent] = useState(initialContent)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [analysisMode, setAnalysisMode] = useState<AnalyzeMode>("auto")
   const [inputError, setInputError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -57,13 +53,15 @@ export function ContentInput({
         setInputError("Hãy dán câu hỏi hoặc ghi chú bạn muốn AI kiểm tra.")
         return
       }
-      if (nextValue.length < 20 || nextValue.split(/\s+/).length < 4) {
+      const minLength = analysisMode === "deep_dive" ? 12 : 20
+      const minWords = analysisMode === "deep_dive" ? 3 : 4
+      if (nextValue.length < minLength || nextValue.split(/\s+/).length < minWords) {
         setInputError("Nội dung còn quá ngắn. Hãy ghi ít nhất 1 câu hỏi hoặc 2-3 dòng ghi chú cụ thể.")
         return
       }
 
       setInputError(null)
-      void onSubmitText(nextValue)
+      void onSubmitText(nextValue, undefined, analysisMode)
       return
     }
 
@@ -77,7 +75,7 @@ export function ContentInput({
     }
 
     setInputError(null)
-    void onSubmitFile(selectedFile)
+    void onSubmitFile(selectedFile, undefined, analysisMode)
   }
 
   const canSubmit = mode === "text" ? Boolean(content.trim()) : Boolean(selectedFile)
@@ -95,8 +93,39 @@ export function ContentInput({
             Gửi nội dung cần phân tích
           </CardTitle>
           <CardDescription>
-            Dán câu hỏi kèm ghi chú của bạn, hoặc tải file văn bản để DUO MIND kiểm tra đúng trọng tâm, tóm tắt rõ và chỉ ra điểm cần sửa.
+            Dán câu hỏi để đào sâu hoặc tải file/ghi chú để phản biện. Analyze hỗ trợ cả hai
+            kiểu làm việc trong cùng một giao diện.
           </CardDescription>
+        </div>
+
+        <div className="rounded-2xl border border-border/70 bg-background/80 p-2">
+          <div className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Chế độ phân tích
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: "auto", label: "Tự nhận diện" },
+              { value: "deep_dive", label: "Đào sâu" },
+              { value: "critique", label: "Kiểm tra nội dung" },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => {
+                  setAnalysisMode(item.value as AnalyzeMode)
+                  setInputError(null)
+                }}
+                className={cn(
+                  "inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-all",
+                  analysisMode === item.value
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-foreground/70 hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-background/80 p-2">
@@ -140,9 +169,7 @@ export function ContentInput({
         {mode === "text" ? (
           <>
             <Textarea
-              placeholder={
-                "Dán văn bản của bạn vào đây để xác thực nhé!"
-              }
+              placeholder="Dán câu hỏi, đoạn ghi chú hoặc nội dung cần AI phân tích vào đây."
               value={content}
               maxLength={MAX_CONTENT_LENGTH}
               onChange={(event) => {
@@ -164,13 +191,22 @@ export function ContentInput({
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Chế độ nhập tay</p>
                 <p className="text-sm text-muted-foreground">
-                  Dòng đầu có thể là câu hỏi hoặc chủ đề cần kiểm tra. {content.length}/{MAX_CONTENT_LENGTH} ký tự. Nhấn{" "}
+                  {analysisMode === "deep_dive"
+                    ? "Dùng cho câu hỏi hoặc chủ đề cần đào sâu hẹp và chặt."
+                    : analysisMode === "critique"
+                      ? "Dùng cho ghi chú, câu trả lời hoặc nội dung cần kiểm tra."
+                      : "Hệ thống sẽ tự nhận diện giữa đào sâu và kiểm tra nội dung."}{" "}
+                  {content.length}/{MAX_CONTENT_LENGTH} ký tự. Nhấn{" "}
                   <span className="font-medium text-foreground">Ctrl + Enter</span> để gửi nhanh.
                 </p>
               </div>
 
               <Button onClick={handleSubmit} disabled={!canSubmit || loading} className="sm:min-w-40">
-                {loading ? "Đang phân tích..." : "Phân tích nội dung"}
+                {loading
+                  ? "Đang phân tích..."
+                  : analysisMode === "deep_dive"
+                    ? "Đào sâu nội dung"
+                    : "Phân tích nội dung"}
                 <Wand2 className="ml-2 size-4" />
               </Button>
             </div>
@@ -247,7 +283,8 @@ export function ContentInput({
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Chế độ tải file</p>
                 <p className="text-sm text-muted-foreground">
-                  Hệ thống sẽ trích nội dung văn bản, phân tích logic chính và lưu tên file vào lịch sử để bạn xem lại sau.
+                  Hệ thống sẽ trích nội dung văn bản rồi tự nhận diện nên đào sâu hay phản biện,
+                  trừ khi bạn đã chốt mode ngay từ đầu.
                 </p>
               </div>
 

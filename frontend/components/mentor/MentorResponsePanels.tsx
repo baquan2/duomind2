@@ -23,6 +23,7 @@ import type {
   MentorSkillGap,
 } from "@/types"
 
+
 const GAP_BADGE_STYLES: Record<string, string> = {
   high: "border-0 bg-amber-100 text-amber-900",
   medium: "border-0 bg-emerald-100 text-emerald-900",
@@ -34,6 +35,7 @@ const GAP_BADGE_LABELS: Record<string, string> = {
   medium: "Ưu tiên vừa",
   low: "Ưu tiên thấp",
 }
+
 
 export function MentorResponsePanels({
   payload,
@@ -50,7 +52,9 @@ export function MentorResponsePanels({
 
   return (
     <div className="mt-4 space-y-4 border-t border-border/70 pt-4">
-      {payload.decision_summary ? <DecisionSummarySection payload={payload} intent={intent} /> : null}
+      {payload.decision_summary ? (
+        <DecisionSummarySection payload={payload} />
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {explorePrompt ? (
@@ -91,7 +95,16 @@ export function MentorResponsePanels({
       {visibility.marketSignals && payload.market_signals?.length ? (
         <MarketSignalsSection items={payload.market_signals} />
       ) : null}
-      {payload.sources?.length ? <SourcesSection sources={payload.sources} /> : null}
+      {payload.sources?.length ? (
+        <SourcesSection title="Nguồn đã dùng" sources={payload.sources} />
+      ) : null}
+      {payload.related_materials?.length ? (
+        <SourcesSection
+          title="Tài liệu liên quan"
+          sources={payload.related_materials}
+          description="Các liên kết này phù hợp để đọc sâu thêm sau khi bạn đã nắm được ý chính."
+        />
+      ) : null}
       {payload.suggested_followups?.length ? (
         <FollowupSection items={payload.suggested_followups} onFollowup={onFollowup} />
       ) : null}
@@ -99,26 +112,13 @@ export function MentorResponsePanels({
   )
 }
 
+
 function DecisionSummarySection({
   payload,
-  intent,
 }: {
   payload: MentorMessagePayload
-  intent?: string | null
 }) {
-  const fallbackSummary = buildDecisionSummaryFallback(payload, intent)
-  const summary =
-    payload.decision_summary &&
-    ![
-      payload.decision_summary.headline,
-      payload.decision_summary.reason,
-      payload.decision_summary.next_action,
-    ].some((value) => {
-      const normalized = (value || "").trim()
-      return normalized.endsWith("...") || normalized.endsWith("…")
-    })
-      ? payload.decision_summary
-      : fallbackSummary
+  const summary = payload.decision_summary || buildDecisionSummaryFallback(payload)
   if (!summary) {
     return null
   }
@@ -162,6 +162,7 @@ function DecisionSummarySection({
     </section>
   )
 }
+
 
 function CareerPathsSection({ items }: { items: MentorCareerPath[] }) {
   return (
@@ -211,6 +212,7 @@ function CareerPathsSection({ items }: { items: MentorCareerPath[] }) {
   )
 }
 
+
 function SkillGapSection({ items }: { items: MentorSkillGap[] }) {
   return (
     <StructuredSection
@@ -247,6 +249,7 @@ function SkillGapSection({ items }: { items: MentorSkillGap[] }) {
   )
 }
 
+
 function LearningStepsSection({ items }: { items: string[] }) {
   return (
     <StructuredSection
@@ -269,6 +272,7 @@ function LearningStepsSection({ items }: { items: string[] }) {
     </StructuredSection>
   )
 }
+
 
 function MarketSignalsSection({ items }: { items: MentorMarketSignal[] }) {
   return (
@@ -316,16 +320,21 @@ function MarketSignalsSection({ items }: { items: MentorMarketSignal[] }) {
   )
 }
 
+
 function SourcesSection({
+  title,
   sources,
+  description = "Các đường dẫn này dùng để kiểm tra thêm hoặc mở rộng góc nhìn khi cần.",
 }: {
-  sources: MentorMessagePayload["sources"]
+  title: string
+  sources: NonNullable<MentorMessagePayload["sources"]>
+  description?: string
 }) {
   return (
     <StructuredSection
-      title="Nguồn tham khảo"
+      title={title}
       icon={<Link2 className="size-4" />}
-      description="Các đường dẫn này dùng để kiểm tra thêm hoặc mở rộng góc nhìn khi cần."
+      description={description}
     >
       <div className="space-y-2">
         {sources.map((source) => (
@@ -344,6 +353,7 @@ function SourcesSection({
     </StructuredSection>
   )
 }
+
 
 function FollowupSection({
   items,
@@ -374,6 +384,7 @@ function FollowupSection({
   )
 }
 
+
 function StructuredSection({
   title,
   icon,
@@ -396,6 +407,7 @@ function StructuredSection({
     </section>
   )
 }
+
 
 function resolveIntentVisibility(intent?: string | null) {
   switch ((intent || "").trim()) {
@@ -430,13 +442,14 @@ function resolveIntentVisibility(intent?: string | null) {
       }
     default:
       return {
-        careerPaths: true,
-        skillGaps: true,
-        learningSteps: true,
-        marketSignals: true,
+        careerPaths: false,
+        skillGaps: false,
+        learningSteps: false,
+        marketSignals: false,
       }
   }
 }
+
 
 function buildExplorePrompt(payload: MentorMessagePayload) {
   const topSkill = payload.skill_gaps?.[0]?.skill?.trim()
@@ -444,18 +457,14 @@ function buildExplorePrompt(payload: MentorMessagePayload) {
     return `Giải thích ${topSkill} theo cách dễ học và dễ áp dụng thực tế`
   }
 
-  const topStep = payload.recommended_learning_steps?.[0]?.trim()
-  if (topStep) {
-    return topStep
-  }
-
   const topRole = payload.career_paths?.[0]?.role?.trim()
   if (topRole) {
     return `Những kỹ năng cốt lõi để bắt đầu với vai trò ${topRole}`
   }
 
-  return ""
+  return payload.suggested_followups?.[0] || ""
 }
+
 
 function buildAnalyzeContent(payload: MentorMessagePayload) {
   const topSkill = payload.skill_gaps?.[0]?.skill?.trim()
@@ -471,6 +480,7 @@ function buildAnalyzeContent(payload: MentorMessagePayload) {
   return ""
 }
 
+
 function normalizeGapLevel(level: string) {
   const normalized = level?.toLowerCase().trim()
   if (normalized === "high" || normalized === "medium" || normalized === "low") {
@@ -479,8 +489,8 @@ function normalizeGapLevel(level: string) {
   return "medium"
 }
 
-function buildDecisionSummaryFallback(payload: MentorMessagePayload, intent?: string | null) {
-  void intent
+
+function buildDecisionSummaryFallback(payload: MentorMessagePayload) {
   const topRole = payload.career_paths?.[0]?.role?.trim()
   const topGap = payload.skill_gaps?.[0]?.skill?.trim()
   const topGapAction = payload.skill_gaps?.[0]?.suggested_action?.trim()
@@ -504,7 +514,8 @@ function buildDecisionSummaryFallback(payload: MentorMessagePayload, intent?: st
       gapReason ||
       payload.career_paths?.[0]?.fit_reason?.trim() ||
       "Mentor đang dựa vào vai trò mục tiêu, khoảng trống kỹ năng và bước học tiếp theo để chốt ưu tiên gần nhất.",
-    next_action: topGapAction || topStep || "Mở lộ trình hoặc Khám phá để thực hiện bước học tiếp theo.",
+    next_action:
+      topGapAction || topStep || "Mở lộ trình hoặc Khám phá để thực hiện bước học tiếp theo.",
     confidence_note:
       payload.skill_gaps?.length || payload.career_paths?.length
         ? "Tóm tắt này được suy ra từ vai trò mục tiêu, khoảng trống kỹ năng và lộ trình học hiện có."

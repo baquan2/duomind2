@@ -18,7 +18,7 @@ export function normalizeAnalyzeVerdict(
   correctionsCount = 0,
   sourcesCount = 0
 ): AnalyzeVerdict {
-  if (verdict === "correct" || verdict === "incorrect") {
+  if (verdict === "correct" || verdict === "incorrect" || verdict === "deep_dive") {
     return verdict
   }
 
@@ -31,6 +31,14 @@ export function getAnalyzeVerdictMeta(verdict: AnalyzeVerdict) {
       label: "Thong tin dung",
       shortLabel: "Dung",
       description: "Noi dung hien tai bam dung kien thuc cot loi va co nguon doi chieu ho tro.",
+    }
+  }
+
+  if (verdict === "deep_dive") {
+    return {
+      label: "Dao sau",
+      shortLabel: "Dao sau",
+      description: "Phien nay uu tien giai thich he thong va co che, khong dung nhu mot lan cham bai dung/sai.",
     }
   }
 

@@ -12,8 +12,10 @@ import {
 import { normalizeAnalyzeVerdict } from "@/lib/analyze-verdict"
 import { getReadableGeneratedTitle } from "@/lib/generated-content"
 
+
 export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResult {
   const rawContent = stripSourceLabel(session.user_input)
+  const relatedMaterials = readRelatedMaterials(session)
 
   return {
     session_id: session.id,
@@ -23,12 +25,15 @@ export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResu
       rawContent,
       session.summary
     ),
-    verdict: normalizeAnalyzeVerdict(
-      session.verdict,
-      session.accuracy_assessment,
-      session.corrections?.length ?? 0,
-      session.sources?.length ?? 0
-    ),
+    verdict:
+      session.session_subtype === "deep_dive"
+        ? "deep_dive"
+        : normalizeAnalyzeVerdict(
+            session.verdict,
+            session.accuracy_assessment,
+            session.corrections?.length ?? 0,
+            session.sources?.length ?? 0
+          ),
     accuracy_score: session.accuracy_score ?? null,
     accuracy_assessment:
       (session.accuracy_assessment as AnalyzeResult["accuracy_assessment"]) ??
@@ -41,10 +46,13 @@ export function mapSessionToAnalyzeResult(session: LearningSession): AnalyzeResu
     topic_tags: session.topic_tags ?? [],
     mindmap_data: session.mindmap_data ?? buildFallbackMindMap(session),
     sources: session.sources ?? [],
+    related_materials: relatedMaterials,
     source_label: extractSourceLabel(session.user_input) || "Nội dung nhập tay",
     input_preview: buildInputPreview(rawContent),
+    save_metadata: undefined,
   }
 }
+
 
 export function mapSessionToExploreResult(session: LearningSession): ExploreResult {
   return {
@@ -57,8 +65,22 @@ export function mapSessionToExploreResult(session: LearningSession): ExploreResu
     topic_tags: session.topic_tags ?? [],
     mindmap_data: session.mindmap_data ?? buildFallbackMindMap(session),
     sources: session.sources ?? [],
+    related_materials: readRelatedMaterials(session),
+    save_metadata: undefined,
   }
 }
+
+
+function readRelatedMaterials(session: LearningSession) {
+  const generationTrace = session.generation_trace || {}
+  const requestPayload = session.request_payload || {}
+  return (
+    (generationTrace.related_materials as ExploreResult["related_materials"]) ||
+    (requestPayload.related_materials as ExploreResult["related_materials"]) ||
+    []
+  )
+}
+
 
 function buildFallbackKnowledgeDetail(session: LearningSession): KnowledgeDetailData {
   const keyPoints = session.key_points ?? []
@@ -99,17 +121,19 @@ function buildFallbackKnowledgeDetail(session: LearningSession): KnowledgeDetail
       },
       next_step_self_study: {
         title: "Điểm cần nắm tiếp",
-        content: "Chốt lại phần cốt lõi, cơ chế và chỗ dễ nhầm trước khi mở rộng sang ví dụ khác.",
+        content:
+          "Chốt lại phần cốt lõi, cơ chế và chỗ dễ nhầm trước khi mở rộng sang ví dụ khác.",
       },
     },
     teaching_adaptation: {
-      focus_priority: "ưu tiên phần cốt lõi trước",
+      focus_priority: "Ưu tiên phần cốt lõi trước",
       tone: "rõ ràng, gần gũi, thiên về sư phạm",
       depth_control: "đi từ nền tảng đến ứng dụng",
       example_strategy: "dùng ví dụ trực quan và gần thực tế",
     },
   }
 }
+
 
 function buildFallbackMindMap(session: LearningSession) {
   const points = session.key_points?.slice(0, 5) ?? []

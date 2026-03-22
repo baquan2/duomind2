@@ -106,6 +106,15 @@
     text-wrap: balance;
   }
 
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .landing-grid {
     background-image:
       linear-gradient(rgba(148, 210, 255, 0.1) 1px, transparent 1px),
@@ -161,6 +170,47 @@
     filter: blur(0.8px);
     animation: landing-beam-sweep 6.5s linear infinite;
   }
+
+  .pitch-grid {
+    background-image:
+      linear-gradient(rgba(125, 211, 252, 0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(125, 211, 252, 0.09) 1px, transparent 1px);
+    background-size: 7rem 7rem;
+    mask-image: radial-gradient(circle at center, black 22%, transparent 82%);
+    animation: pitch-grid-drift 24s linear infinite;
+  }
+
+  .pitch-noise {
+    background-image:
+      radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.07), transparent 24%),
+      radial-gradient(circle at 82% 22%, rgba(253, 230, 138, 0.07), transparent 20%),
+      radial-gradient(circle at 54% 78%, rgba(52, 211, 153, 0.07), transparent 22%);
+  }
+
+  .pitch-panel {
+    box-shadow:
+      0 32px 90px rgba(2, 8, 23, 0.34),
+      0 0 0 1px rgba(255, 255, 255, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .pitch-beam {
+    position: absolute;
+    left: -14%;
+    top: 14%;
+    height: 1px;
+    width: 72%;
+    transform: rotate(11deg);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.7),
+      rgba(125, 211, 252, 0.72),
+      transparent
+    );
+    filter: blur(0.8px);
+    animation: pitch-beam-sweep 7.2s linear infinite;
+  }
 }
 
 @keyframes landing-grid-drift {
@@ -200,6 +250,33 @@
   }
 }
 
+@keyframes pitch-grid-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-32px, -32px, 0);
+  }
+}
+
+@keyframes pitch-beam-sweep {
+  0% {
+    opacity: 0;
+    transform: translate3d(-18%, 0, 0) rotate(11deg);
+  }
+
+  20%,
+  76% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(128%, 0, 0) rotate(11deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -207,7 +284,9 @@
 
   .landing-grid,
   .landing-marquee-track,
-  .landing-beam {
+  .landing-beam,
+  .pitch-grid,
+  .pitch-beam {
     animation: none;
   }
 }

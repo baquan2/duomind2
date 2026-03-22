@@ -45,3 +45,35 @@ async def resolve_source_lookup(
         print(f"[{flow_label}] Source lookup failed: {exc}")
         return []
     return normalize_source_references(raw_sources)
+
+
+def split_sources_and_related_materials(
+    raw_sources: list[dict[str, str]] | None,
+    *,
+    selected_urls: list[str] | None = None,
+    source_limit: int = 3,
+    related_limit: int = 4,
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    normalized = normalize_source_references(
+        raw_sources or [],
+        limit=max(source_limit + related_limit, 6),
+    )
+    selected = {normalize_text(url) for url in (selected_urls or []) if normalize_text(url)}
+    evidence: list[dict[str, str]] = []
+    related: list[dict[str, str]] = []
+
+    if selected:
+        for item in normalized:
+            if item["url"] in selected and len(evidence) < source_limit:
+                evidence.append(item)
+        for item in normalized:
+            if item["url"] in selected:
+                continue
+            related.append(item)
+            if len(related) >= related_limit:
+                break
+        return evidence, related
+
+    evidence = normalized[:source_limit]
+    related = normalized[source_limit : source_limit + related_limit]
+    return evidence, related

@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { analyzeContent, analyzeFile } from "@/lib/api/analyze"
+import type { AnalyzeMode } from "@/lib/api/analyze"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import type { AnalyzeResult as AnalyzeResultData } from "@/types"
 
@@ -50,12 +51,20 @@ export default function AnalyzePage() {
     }
   }
 
-  const handleAnalyzeText = async (content: string, analysisGoal?: string) => {
-    await runAnalysis(() => analyzeContent(content, "vi", analysisGoal))
+  const handleAnalyzeText = async (
+    content: string,
+    analysisGoal?: string,
+    mode: AnalyzeMode = "auto"
+  ) => {
+    await runAnalysis(() => analyzeContent(content, "vi", analysisGoal, mode))
   }
 
-  const handleAnalyzeFile = async (file: File, analysisGoal?: string) => {
-    await runAnalysis(() => analyzeFile(file, "vi", analysisGoal))
+  const handleAnalyzeFile = async (
+    file: File,
+    analysisGoal?: string,
+    mode: AnalyzeMode = "auto"
+  ) => {
+    await runAnalysis(() => analyzeFile(file, "vi", analysisGoal, mode))
   }
 
   return (
@@ -63,17 +72,16 @@ export default function AnalyzePage() {
       <section className="relative overflow-hidden rounded-[2rem] border border-border/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,217,102,0.35),_transparent_28%),linear-gradient(135deg,_rgba(15,118,110,0.12),_rgba(248,250,252,0.92))] p-6 shadow-sm shadow-primary/10 sm:p-8">
         <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative space-y-4">
-          <Badge className="border-0 bg-primary text-primary-foreground">
-            Milestone 3
-          </Badge>
+          <Badge className="border-0 bg-primary text-primary-foreground">Milestone 3</Badge>
           <div className="max-w-3xl space-y-3">
             <h1 className="font-display text-4xl font-semibold text-balance">
-              Phân tích độ chính xác của nội dung học tập theo cách dễ đọc hơn
+              Analyze để đào sâu chủ đề hoặc phản biện nội dung học tập
             </h1>
             <p className="text-sm leading-7 text-foreground/75 sm:text-base">
-              Dán nội dung hoặc tải file văn bản, hệ thống sẽ đánh giá độ tin cậy,
-              tóm tắt trọng tâm, chỉ ra điểm cần đính chính và sinh mind map ngay
-              trong cùng một phiên.
+              Chọn <span className="font-medium">Đào sâu</span> khi bạn muốn bóc tách cơ chế,
+              cấu trúc và trade-off của một chủ đề. Chọn{" "}
+              <span className="font-medium">Kiểm tra nội dung</span> khi bạn muốn AI đọc ghi chú,
+              câu trả lời hoặc file rồi chỉ ra phần đúng, phần sai và phần cần sửa.
             </p>
           </div>
         </div>
@@ -89,8 +97,8 @@ export default function AnalyzePage() {
       {prefilledContent ? (
         <Card className="border border-primary/20 bg-primary/5">
           <CardContent className="px-5 py-4 text-sm leading-7 text-foreground/82">
-            Nội dung này được đưa từ roadmap hoặc mentor để bạn tự kiểm tra mức độ hiểu bài. Bạn có
-            thể sửa lại ghi chú trước khi bấm <span className="font-medium text-foreground">Phân tích</span>.
+            Nội dung này được đưa từ roadmap hoặc mentor. Bạn có thể giữ nguyên để phản biện,
+            hoặc rút gọn thành một câu hỏi nếu muốn dùng Analyze theo chế độ đào sâu.
           </CardContent>
         </Card>
       ) : null}
@@ -107,12 +115,9 @@ export default function AnalyzePage() {
             <div className="mx-auto flex size-14 animate-soft-float items-center justify-center rounded-full bg-primary/10 text-primary">
               <BrainCircuit className="size-6" />
             </div>
-            <h2 className="font-display text-2xl font-semibold">
-              Đang phân tích nội dung
-            </h2>
+            <h2 className="font-display text-2xl font-semibold">Đang phân tích nội dung</h2>
             <p className="text-sm text-muted-foreground">
-              AI đang đọc dữ liệu đầu vào, đối chiếu độ chính xác, gom ý chính và
-              chuẩn bị sơ đồ mind map cho phiên này.
+              AI đang đọc dữ liệu đầu vào, gom ý chính, đối chiếu nguồn và dựng cấu trúc giải thích.
             </p>
           </CardContent>
         </Card>
@@ -125,13 +130,10 @@ export default function AnalyzePage() {
               <ScanSearch className="size-6" />
             </div>
             <div className="space-y-2">
-              <h2 className="font-display text-2xl font-semibold">
-                Sẵn sàng phân tích
-              </h2>
+              <h2 className="font-display text-2xl font-semibold">Sẵn sàng phân tích</h2>
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Kết quả sẽ được trình bày theo từng khối rõ ràng gồm tổng quan,
-                điểm chính, đính chính, mind map và khu vực ôn tập để bạn đọc nhanh
-                hơn.
+                Kết quả sẽ tách rõ giữa phần tổng quan, phần kiến thức đúng, phần nguồn đã dùng và
+                phần đính chính để bạn đọc nhanh hơn.
               </p>
             </div>
           </CardContent>

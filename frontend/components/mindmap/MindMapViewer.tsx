@@ -20,7 +20,7 @@ import type { MindMapData, MindMapEdge, MindMapNode } from "@/types"
 import { CustomNode } from "./CustomNode"
 
 interface MindMapViewerProps {
-  sessionId: string
+  sessionId?: string | null
   initialData?: MindMapData | null
 }
 
@@ -45,21 +45,12 @@ function normalizeMindMapText(text: string) {
 }
 
 function getInitialSelectedNode(nodes: MindMapNode[]) {
-  return (
-    nodes.find((node) => node.type === "main") ??
-    nodes.find((node) => node.type === "root") ??
-    nodes[0] ??
-    null
-  )
+  return nodes.find((node) => node.type === "main") ?? nodes.find((node) => node.type === "root") ?? nodes[0] ?? null
 }
 
 export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<MindMapNode>(
-    initialData?.nodes ?? []
-  )
-  const [edges, setEdges, onEdgesChange] = useEdgesState<MindMapEdge>(
-    initialData?.edges ?? []
-  )
+  const [nodes, setNodes, onNodesChange] = useNodesState<MindMapNode>(initialData?.nodes ?? [])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<MindMapEdge>(initialData?.edges ?? [])
   const [graphData, setGraphData] = useState<MindMapData | null>(initialData ?? null)
   const [selectedNode, setSelectedNode] = useState<MindMapNode | null>(null)
   const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([])
@@ -95,6 +86,13 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
 
     async function loadMindMap() {
       if (initialData?.nodes?.length) {
+        return
+      }
+
+      if (!sessionId) {
+        setGraphData({ nodes: [], edges: [] })
+        setError("Mind map chỉ khả dụng khi phiên đã được lưu.")
+        setLoading(false)
         return
       }
 
@@ -135,10 +133,7 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
     }
   }, [initialData, sessionId])
 
-  const expandableNodeIds = useMemo(
-    () => (graphData ? getExpandableNodeIds(graphData) : []),
-    [graphData]
-  )
+  const expandableNodeIds = useMemo(() => (graphData ? getExpandableNodeIds(graphData) : []), [graphData])
 
   useEffect(() => {
     if (!graphData) {
@@ -180,12 +175,9 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
     []
   )
 
-  const hasExpandableChildren = Boolean(
-    selectedNode && expandableNodeIds.includes(selectedNode.id)
-  )
+  const hasExpandableChildren = Boolean(selectedNode && expandableNodeIds.includes(selectedNode.id))
   const allExpanded =
-    expandableNodeIds.length > 0 &&
-    expandableNodeIds.every((nodeId) => expandedNodeIds.includes(nodeId))
+    expandableNodeIds.length > 0 && expandableNodeIds.every((nodeId) => expandedNodeIds.includes(nodeId))
 
   if (loading) {
     return (
@@ -224,14 +216,10 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
                   )}
                 </h4>
                 {selectedNode.data.description ? (
-                  <p className="text-sm leading-6 text-foreground/80">
-                    {selectedNode.data.description as string}
-                  </p>
+                  <p className="text-sm leading-6 text-foreground/80">{selectedNode.data.description as string}</p>
                 ) : null}
                 {selectedNode.data.details ? (
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    {selectedNode.data.details as string}
-                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">{selectedNode.data.details as string}</p>
                 ) : null}
               </div>
 
@@ -240,9 +228,7 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() =>
-                      setExpandedNodeIds(allExpanded ? [] : expandableNodeIds)
-                    }
+                    onClick={() => setExpandedNodeIds(allExpanded ? [] : expandableNodeIds)}
                   >
                     {allExpanded ? (
                       <>
@@ -327,10 +313,7 @@ export function MindMapViewer({ sessionId, initialData }: MindMapViewerProps) {
   )
 }
 
-function toggleNodeExpansion(
-  nodeId: string,
-  setExpandedNodeIds: Dispatch<SetStateAction<string[]>>
-) {
+function toggleNodeExpansion(nodeId: string, setExpandedNodeIds: Dispatch<SetStateAction<string[]>>) {
   setExpandedNodeIds((current) => {
     if (current.includes(nodeId)) {
       return current.filter((id) => id !== nodeId)
@@ -368,9 +351,7 @@ function buildVisibleGraph(graphData: MindMapData, expandedNodeIds: string[]) {
       return
     }
 
-    const parentIds = graphData.edges
-      .filter((edge) => edge.target === node.id)
-      .map((edge) => edge.source)
+    const parentIds = graphData.edges.filter((edge) => edge.target === node.id).map((edge) => edge.source)
 
     if (parentIds.some((parentId) => expandedSet.has(parentId))) {
       visibleNodeIds.add(node.id)

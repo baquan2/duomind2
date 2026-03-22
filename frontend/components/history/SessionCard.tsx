@@ -9,13 +9,15 @@ import { SessionActions } from "@/components/history/SessionActions"
 import { Badge } from "@/components/ui/badge"
 import { toggleBookmark } from "@/lib/api/history"
 import { getAnalyzeVerdictMeta, normalizeAnalyzeVerdict } from "@/lib/analyze-verdict"
-import type { LearningSession } from "@/types"
 import { cn } from "@/lib/utils"
+import type { LearningSession } from "@/types"
+
 
 interface SessionCardProps {
   session: LearningSession
   onDeleted?: () => void
 }
+
 
 export function SessionCard({ session, onDeleted }: SessionCardProps) {
   const router = useRouter()
@@ -25,12 +27,14 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
   const isAnalyze = session.session_type === "analyze"
   const Icon = isAnalyze ? ScanSearch : FlaskConical
   const analyzeVerdict = isAnalyze
-    ? normalizeAnalyzeVerdict(
-        session.verdict,
-        session.accuracy_assessment,
-        session.corrections?.length ?? 0,
-        session.sources?.length ?? 0
-      )
+    ? session.session_subtype === "deep_dive"
+      ? "deep_dive"
+      : normalizeAnalyzeVerdict(
+          session.verdict,
+          session.accuracy_assessment,
+          session.corrections?.length ?? 0,
+          session.sources?.length ?? 0
+        )
     : null
   const analyzeVerdictMeta = analyzeVerdict
     ? getAnalyzeVerdictMeta(analyzeVerdict)
@@ -66,7 +70,7 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
                   "border-0",
                   isAnalyze
                     ? "bg-sky-100 text-sky-800"
-                    : "bg-purple-100 text-purple-800"
+                    : "bg-emerald-100 text-emerald-800"
                 )}
               >
                 <Icon className="mr-1 size-3.5" />
@@ -80,7 +84,9 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
                     "bg-background",
                     analyzeVerdict === "correct"
                       ? "text-emerald-700"
-                      : "text-rose-700"
+                      : analyzeVerdict === "deep_dive"
+                        ? "text-sky-700"
+                        : "text-rose-700"
                   )}
                 >
                   {analyzeVerdictMeta.shortLabel}
@@ -99,11 +105,16 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
               ) : null}
             </div>
 
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-between gap-3">
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock3 className="size-3.5" />
                 {new Date(session.created_at).toLocaleDateString("vi-VN")}
               </span>
+              {session.session_subtype ? (
+                <span className="text-xs text-muted-foreground">
+                  Mode: {session.session_subtype}
+                </span>
+              ) : null}
             </div>
           </button>
 
@@ -124,7 +135,7 @@ export function SessionCard({ session, onDeleted }: SessionCardProps) {
 
         <div className="flex items-center justify-between gap-3 border-t border-border/70 pt-3">
           <p className="text-xs text-muted-foreground">
-            Bạn có thể xem lại, tải xuống hoặc xóa phiên học này.
+            Bạn có thể xem lại, tải xuống hoặc mở trace của phiên học này.
           </p>
           <SessionActions
             sessionId={session.id}

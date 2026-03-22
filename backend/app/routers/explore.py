@@ -11,6 +11,11 @@ from app.models.analysis import ExploreRequest, ExploreResult
 from app.services.gemini_service import gemini
 from app.services.knowledge_research_service import search_knowledge_sources
 from app.services.supabase_service import SupabaseService
+from app.utils.ai_context import (
+    DEFAULT_CONTEXT_POLICY,
+    build_context_usage_trace,
+    build_shared_ai_context,
+)
 from app.utils.content_blueprint import (
     build_blueprint_fallback,
     build_key_points_from_briefs,
@@ -43,7 +48,7 @@ from app.utils.knowledge_detail import (
     SECTION_ORDER,
     normalize_multiline_text,
 )
-from app.utils.source_references import resolve_source_lookup
+from app.utils.source_references import resolve_source_lookup, split_sources_and_related_materials
 
 
 router = APIRouter()
@@ -761,17 +766,21 @@ def _build_explore_brief(prompt: str, focus_topic: str, plan: dict[str, Any]) ->
 def _should_generate_explore_blueprint(plan: dict[str, Any], prompt: str) -> bool:
     question_type = normalize_text(str(plan.get("question_type") or "")).lower()
     prompt_length = len(normalize_text(prompt).split())
-    if question_type in {"definition", "comparison", "mechanism", "structure"} and prompt_length <= 18:
+    if prompt_length <= 2:
         return False
-    return True
+    if question_type in {"definition", "comparison", "mechanism", "structure"}:
+        return True
+    return prompt_length >= 4
 
 
 def _should_lookup_explore_sources(plan: dict[str, Any], prompt: str) -> bool:
     question_type = normalize_text(str(plan.get("question_type") or "")).lower()
     prompt_length = len(normalize_text(prompt).split())
-    if question_type in {"definition", "comparison", "mechanism", "structure"} and prompt_length <= 18:
+    if prompt_length <= 2:
         return False
-    return True
+    if question_type in {"definition", "comparison", "mechanism", "structure"}:
+        return True
+    return prompt_length >= 4
 
 
 def _build_explore_source_brief(
@@ -1213,19 +1222,21 @@ async def explore_topic(
 ) -> ExploreResult:
     svc = SupabaseService(supabase)
     start_time = perf_counter()
-    svc.ensure_profile(
+    profile = svc.ensure_profile(
         current_user["id"],
         email=current_user.get("email"),
         full_name=current_user.get("full_name"),
         avatar_url=current_user.get("avatar_url"),
     )
+    onboarding = svc.get_onboarding(current_user["id"])
+    recent_sessions = svc.get_recent_learning_context(current_user["id"], limit=5)
+    context_bundle = build_shared_ai_context(
+        profile=profile,
+        onboarding=onboarding,
+        recent_sessions=recent_sessions,
+    )
 
-    try:
-        onboarding = svc.get_onboarding(current_user["id"])
-    except Exception:
-        onboarding = None
-
-    learner_context = build_prompt_learning_context(get_user_context(onboarding))
+    learner_context: dict[str, Any] = dict(context_bundle["learner_context"])
     validated_prompt = _validate_explore_input(request.prompt)
     initial_focus_topic = normalize_topic_phrase(validated_prompt) or normalize_text(validated_prompt)
     explore_plan = await _build_explore_plan(validated_prompt, initial_focus_topic)
@@ -1296,14 +1307,16 @@ async def explore_topic(
                 evidence_targets=[
                     str(item) for item in explore_plan.get("must_include", []) if str(item).strip()
                 ],
+                limit=7,
             )
         )
         verified_sources = await resolve_source_lookup(source_task, flow_label="explore")
+    evidence_sources, related_materials = split_sources_and_related_materials(verified_sources)
     source_brief = _build_explore_source_brief(
         validated_prompt,
         focus_topic,
         explore_plan,
-        verified_sources,
+        evidence_sources,
     )
     if _should_generate_explore_blueprint(explore_plan, validated_prompt):
         try:
@@ -1362,14 +1375,15 @@ async def explore_topic(
         if repaired_result:
             ai_result = repaired_result
 
-    if _raw_explore_result_needs_rewrite(
+    fallback_used = _raw_explore_result_needs_rewrite(
         focus_topic,
         validated_prompt,
         ai_result if isinstance(ai_result, dict) else {},
     ) or _violates_explore_plan(
         ai_result if isinstance(ai_result, dict) else {},
         explore_plan,
-    ):
+    )
+    if fallback_used:
         ai_result = _merge_explore_result(ai_result, fallback_payload)
 
     title = _build_compact_result_title(ai_result.get("title"), fallback_payload["title"])
@@ -1441,38 +1455,86 @@ async def explore_topic(
     knowledge_detail_data["topic_tags"] = topic_tags
 
     mindmap_data = build_explore_mindmap(title, knowledge_detail_data)
+    context_usage = build_context_usage_trace(
+        learner_context=learner_context,
+        rendered_texts=[
+            summary,
+            " ".join(key_points),
+            str(
+                ((knowledge_detail_data.get("detailed_sections") or {}).get("persona_based_example") or {}).get(
+                    "content"
+                )
+                or ""
+            ),
+        ],
+    )
+    request_payload = {
+        "prompt": request.prompt,
+        "normalized_prompt": validated_prompt,
+        "context_policy": DEFAULT_CONTEXT_POLICY,
+        "related_materials": related_materials,
+    }
+    context_snapshot = {
+        "learner_context": learner_context,
+        "profile_digest": context_bundle["profile_digest"],
+        "context_policy": DEFAULT_CONTEXT_POLICY,
+        "focus_topic": focus_topic,
+        "explore_plan": explore_plan,
+        "explore_brief": explore_brief,
+    }
+    generation_trace = {
+        "session_subtype": "overview",
+        "question_type": explore_plan.get("question_type"),
+        "focus_topic": focus_topic,
+        "learner_context_digest": learner_context,
+        "context_usage": context_usage,
+        "context_policy": DEFAULT_CONTEXT_POLICY,
+        "source_lookup_plan": {
+            "should_lookup": _should_lookup_explore_sources(explore_plan, validated_prompt),
+            "source_count": len(verified_sources),
+        },
+        "chosen_sources": evidence_sources,
+        "related_materials": related_materials,
+        "rewrite_used": bool(needs_rewrite),
+        "fallback_used": bool(fallback_used),
+        "model_name": getattr(gemini, "_configured_model_name", None) or "gemini-2.5-flash",
+        "latency_ms": int((perf_counter() - start_time) * 1000),
+    }
 
     session = svc.create_session(
         current_user["id"],
         {
             "session_type": "explore",
+            "session_subtype": "overview",
             "title": title,
-            "user_input": validated_prompt,
+            "user_input": request.prompt,
             "topic_tags": topic_tags,
             "summary": summary,
             "key_points": key_points,
             "infographic_data": knowledge_detail_data,
             "mindmap_data": mindmap_data,
-            "sources": verified_sources,
+            "sources": evidence_sources,
             "language": request.language,
             "duration_ms": int((perf_counter() - start_time) * 1000),
+            "request_payload": request_payload,
+            "context_snapshot": context_snapshot,
+            "generation_trace": generation_trace,
         },
     )
-    if not session or not session.get("id"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể lưu phiên khám phá.",
-        )
+    session_id = session.get("id") if isinstance(session, dict) else None
+    save_metadata = session.get("_save_metadata") if isinstance(session, dict) else None
 
     return ExploreResult(
-        session_id=session["id"],
+        session_id=session_id,
         title=title,
         summary=summary,
         key_points=key_points,
         knowledge_detail_data=knowledge_detail_data,
         topic_tags=topic_tags,
         mindmap_data=mindmap_data,
-        sources=verified_sources,
+        sources=evidence_sources,
+        related_materials=related_materials,
+        save_metadata=save_metadata,
     )
 
 

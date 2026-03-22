@@ -68,8 +68,8 @@ class GeminiService:
             self._json_model = genai.GenerativeModel(
                 model_name=self._configured_model_name,
                 generation_config={
-                    "temperature": 0.1,
-                    "top_p": 0.9,
+                    "temperature": 0.05,
+                    "top_p": 0.75,
                     "max_output_tokens": 12288,
                     "response_mime_type": "application/json",
                 },
